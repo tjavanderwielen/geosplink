@@ -4,16 +4,15 @@ build-backend = "hatchling.build"
 
 [project]
 name = "geosplink"
-version = "0.1.0"
+version = "0.0.1"
 description = "Geospatial comparators for Splink."
+authors = [{ name = "Thijmen van der Wielen" }]
 requires-python = ">=3.10"
-dependencies = [
-    "splink>=4.0",
-    "duckdb>=0.10",
-]
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/geosplink"]
+license = "MIT"
+dependencies = ["splink>=4.0", "duckdb>=0.10"]
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/geosplink"]
