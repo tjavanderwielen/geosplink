@@ -28,7 +28,7 @@ Size ratio: `min(area_l, area_r) / max(area_l, area_r)`. Useful as an independen
 ## Usage
 
 ```python
-from GeoSplink import GeoOverlap, GeoJaccard, GeoSizeRatio
+from geosplink import GeoOverlap, GeoJaccard, GeoSizeRatio
 
 settings = SettingsCreator(
     link_type="dedupe_only",
@@ -41,7 +41,7 @@ settings = SettingsCreator(
 Individual levels can also be composed into a `CustomComparison`:
 
 ```python
-from GeoSplink import gcll
+from geosplink import gcll
 from splink.internals.comparison_library import CustomComparison
 
 comparison = CustomComparison(
@@ -83,33 +83,3 @@ GeoOverlap("geometry_wkt").configure(
 **Dialect support:** All SQL targets DuckDB spatial functions. Other backends (Spark, Postgres/PostGIS) are not yet supported.
 
 **CRS:** No coordinate reference system handling is implemented. Ensure geometries are in a consistent CRS before use.
-
-## To-do
-
-### Code
-- [ ] Implement `create_description()` on all comparator classes
-- [ ] Dialect support via `create_sql(dialect)` — currently DuckDB only
-- [ ] CRS handling
-- [ ] Support geometry formats other than WKT (WKB, GeoJSON)
-- [ ] Input validation for null or invalid geometries
-- [ ] Internal BBOX computation if not already present in data
-- [ ] Performance testing and spatial indexing
-- [ ] Additional comparators:
-  - [ ] Haversine distance
-  - [ ] Hausdorff distance
-  - [ ] Euclidean distance between centroids (for projected CRS)
-  - [ ] Distance between geometry boundaries
-
-### Publishing
-- [ ] Create repository
-- [ ] Fix internal imports for package structure
-  - [ ] `geo_comparison_library.py`: `import geo_comparison_level_library as gcll` → `from geosplink import geo_comparison_level_library as gcll`
-- [ ] Add `pyproject.toml`
-  - [ ] Package metadata (name, version, author, license)
-  - [ ] Dependencies (`splink`, `duckdb`)
-  - [ ] Optional: `[project.optional-dependencies]` for dev/test extras
-- [ ] Add tests
-  - [ ] Smoke tests: all comparators instantiate without error
-  - [ ] SQL generation: check generated SQL contains expected functions
-  - [ ] Integration test: run a small Splink linkage end-to-end with DuckDB spatial
-- [ ] Move README to repo root
