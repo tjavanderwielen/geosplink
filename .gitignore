@@ -19,7 +19,8 @@ Thumbs.db
 .idea/
 
 # Data - for future use
-# data/
+notebooks/
+sandbox_data/
 # *.csv
 # *.parquet
 # *.duckdb
