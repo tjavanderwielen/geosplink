@@ -1,0 +1,16 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "geosplink"
+version = "0.1.0"
+description = "Geospatial comparators for Splink."
+requires-python = ">=3.10"
+dependencies = [
+    "splink>=4.0",
+    "duckdb>=0.10",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/geosplink"]
