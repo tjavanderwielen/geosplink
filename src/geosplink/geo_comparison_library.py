@@ -9,15 +9,6 @@ Note:
     u-probabilities for overlap/Jaccard levels will likely require manual
     configuration via .configure() — random sampling produces near-zero
     observations for non-matching geometry pairs.
-
-TODO:
-    - Implement create_description() on all classes
-    - Account for coordinate reference systems (CRS)
-    - Add support for geometry formats other than WKT (WKB, GeoJSON)
-    - Add input validation for null or invalid geometries
-    - Performance testing and spatial indexing
-    - Add internal BBOX handling if not already present in data
-    - Dialect support via create_sql(dialect) in level classes
 """
 
 from __future__ import annotations
@@ -192,9 +183,84 @@ class GeoSizeRatio(ComparisonCreator):
             gcll.GeoNullLevel(self._col_name),
             gcll.GeoSizeExactLevel(self._col_name),
             *[gcll.GeoSizeRatioLevel(self._col_name, t) for t in self.thresholds],
-            CustomLevel("ELSE", label_for_charts=f"<{int(self.thresholds[-1] * 100)}% size ratio"),
+            CustomLevel(
+                "ELSE",
+                label_for_charts=f"<{int(self.thresholds[-1] * 100)}% size ratio",
+            ),
         ]
 
     def create_output_column_name(self) -> str:
         return self._col_name
 
+
+class GeoDistance(ComparisonCreator):
+    def __init__(
+        self,
+        col_name: str,
+        distance_threshold_or_thresholds: Union[float, List[float]],
+        distance_type: Literal["euclidean"] = "euclidean",
+        use_centroid: bool = False,
+    ):
+        """
+        Represents a comparison based on the distance between two geometries
+        at three or more levels:
+
+        - Exact match in location of geometries
+        - Distance at specified thresholds (e.g. <=100m, <=500m)
+        - ...
+        - Anything else
+
+        For example, with distance_threshold_or_thresholds = [100, 500] the levels are:
+
+        - Exact match in location of geometries
+        - Distance between geometries <= 100 meters
+        - Distance between geometries <= 500 meters
+        - Anything else
+
+        Notes:
+        - This comparator assumes geometries are in a projected coordinate system
+          with units in meters. If using geographic coordinates (lat/lon), consider
+          using a geodesic distance function or reprojecting to an appropriate CRS.
+
+        Args:
+            col_name (str): The name of the column containing WKT geometry strings.
+                Splink will look for {col_name}_l and {col_name}_r in the comparison table.
+            distance_threshold_or_thresholds (Union[float, List[float]]):
+                A single threshold or list of thresholds for distance levels.
+                No default provided as appropriate thresholds depend on the use case.
+            distance_type (Literal["euclidean"]):
+                Which distance type to compute out of: "euclidean" (default)
+                    — currently only euclidean distance is supported.
+            use_centroid (bool): Whether to compute distance between geometry centroids
+                instead of between geometries themselves. Defaults to False.
+        """
+        thresholds_as_iterable = ensure_is_iterable(distance_threshold_or_thresholds)
+        self.thresholds = [*thresholds_as_iterable]
+        self._col_name = col_name
+        self.distance_type = distance_type
+        self.use_centroid = use_centroid
+        super().__init__(col_name)
+
+    def create_comparison_levels(self) -> List[ComparisonLevelCreator]:
+        if self.distance_type == "euclidean":
+            return [
+                gcll.GeoNullLevel(self._col_name),
+                gcll.GeoDistanceExactLevel(
+                    self._col_name, use_centroid=self.use_centroid
+                ),
+                *[
+                    gcll.GeoDistanceLevel(
+                        self._col_name, t, use_centroid=self.use_centroid
+                    )
+                    for t in self.thresholds
+                ],
+                CustomLevel(
+                    "ELSE",
+                    label_for_charts=f"> {self.thresholds[-1]} distance",
+                ),
+            ]
+        else:
+            raise ValueError(f"Unsupported distance type: {self.distance_type}")
+
+    def create_output_column_name(self) -> str:
+        return self._col_name

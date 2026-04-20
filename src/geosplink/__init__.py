@@ -13,6 +13,6 @@ __all__ = [
     "GeoOverlap",
     "GeoJaccard",
     "GeoSizeRatio",
-    # "GeoDistance",
+    "GeoDistance",
     "gcll",
 ]
