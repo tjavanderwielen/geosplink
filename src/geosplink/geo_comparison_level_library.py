@@ -106,7 +106,7 @@ class GeoOverlapLevel(ComparisonLevelCreator):
 
     Args:
         col_name (str): Name of the WKT geometry column.
-        threshold (float): Minimum overlap coefficient (0–1).
+        threshold (float): Minimum overlap coefficient (0-1).
     """
 
     def __init__(self, col_name: str, threshold: float):
@@ -142,7 +142,7 @@ class GeoJaccardLevel(ComparisonLevelCreator):
 
     Args:
         col_name (str): Name of the WKT geometry column.
-        threshold (float): Minimum Jaccard similarity (0–1).
+        threshold (float): Minimum Jaccard similarity (0-1).
     """
 
     def __init__(self, col_name: str, threshold: float):
@@ -190,9 +190,7 @@ class GeoSizeExactLevel(ComparisonLevelCreator):
 
     def create_sql(self, sql_dialect: SplinkDialect) -> str:
         l, r = f"{self._col_name}_l", f"{self._col_name}_r"
-        return (
-            f"ST_Area(ST_GeomFromText({l})) = ST_Area(ST_GeomFromText({r}))"
-        )
+        return f"ST_Area(ST_GeomFromText({l})) = ST_Area(ST_GeomFromText({r}))"
 
     def create_label_for_charts(self) -> str:
         return "Exact size match"
@@ -204,7 +202,7 @@ class GeoSizeRatioLevel(ComparisonLevelCreator):
 
     Args:
         col_name (str): Name of the WKT geometry column.
-        threshold (float): Minimum size ratio (0–1).
+        threshold (float): Minimum size ratio (0-1).
     """
 
     def __init__(self, col_name: str, threshold: float):
@@ -228,3 +226,62 @@ class GeoSizeRatioLevel(ComparisonLevelCreator):
 
     def create_label_for_charts(self) -> str:
         return f">={int(self.threshold * 100)}% size ratio"
+
+
+class GeoDistanceExactLevel(ComparisonLevelCreator):
+    """
+    Comparison level for geometries at exactly the same location (distance = 0).
+
+    Args:
+        col_name (str): Name of the WKT geometry column.
+        use_centroid (bool): If True, compare centroids instead of full geometries.
+    """
+
+    def __init__(self, col_name: str, use_centroid: bool = False):
+        self._col_name = col_name
+        self.use_centroid = use_centroid
+
+    def create_sql(self, sql_dialect: SplinkDialect) -> str:
+        l, r = f"{self._col_name}_l", f"{self._col_name}_r"
+        if self.use_centroid:
+            geom_l = f"ST_Centroid(ST_GeomFromText({l}))"
+            geom_r = f"ST_Centroid(ST_GeomFromText({r}))"
+        else:
+            geom_l = f"ST_GeomFromText({l})"
+            geom_r = f"ST_GeomFromText({r})"
+        return f"ST_Distance({geom_l}, {geom_r}) = 0"
+
+    def create_label_for_charts(self) -> str:
+        if self.use_centroid:
+            return "Exact centroid match"
+        return "Exact location match"
+
+
+class GeoDistanceLevel(ComparisonLevelCreator):
+    """
+    Comparison level for euclidean distance between geometries at a threshold.
+
+    Args:
+        col_name (str): Name of the WKT geometry column.
+        threshold (float): Maximum distance in the same units as the geometries' coordinate system.
+        use_centroid (bool): If True, compare centroids instead of full geometries.
+    """
+
+    def __init__(self, col_name: str, threshold: float, use_centroid: bool = False):
+        self._col_name = col_name
+        self.threshold = threshold
+        self.use_centroid = use_centroid
+
+    def create_sql(self, sql_dialect: SplinkDialect) -> str:
+        l, r = f"{self._col_name}_l", f"{self._col_name}_r"
+        if self.use_centroid:
+            geom_l = f"ST_Centroid(ST_GeomFromText({l}))"
+            geom_r = f"ST_Centroid(ST_GeomFromText({r}))"
+        else:
+            geom_l = f"ST_GeomFromText({l})"
+            geom_r = f"ST_GeomFromText({r})"
+        return f"ST_Distance({geom_l}, {geom_r}) <= {self.threshold}"
+
+    def create_label_for_charts(self) -> str:
+        prefix = "Centroid distance" if self.use_centroid else "Distance"
+        return f"{prefix} <= {self.threshold}"
