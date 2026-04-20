@@ -187,6 +187,10 @@ class GeoSizeRatio(ComparisonCreator):
                 "ELSE",
                 label_for_charts=f"<{int(self.thresholds[-1] * 100)}% size ratio",
             ),
+            CustomLevel(
+                "ELSE",
+                label_for_charts=f"<{int(self.thresholds[-1] * 100)}% size ratio",
+            ),
         ]
 
     def create_output_column_name(self) -> str:
