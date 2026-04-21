@@ -234,10 +234,8 @@ class TestGeoDistance:
         assert levels[2].use_centroid is False
 
     def test_unsupported_distance_type_raises(self):
-        with pytest.raises(ValueError, match="Unsupported distance type"):
-            gcl.GeoDistance(
-                "geometry", 100, distance_type="haversine", crs=_PROJECTED
-            ).create_comparison_levels()
+        with pytest.raises(ValueError, match="distance_type"):
+            gcl.GeoDistance("geometry", 100, distance_type="haversine", crs=_PROJECTED)
 
     def test_no_crs_warns(self):
         with pytest.warns(UserWarning, match="no CRS supplied"):
@@ -256,3 +254,128 @@ class TestGeoDistance:
         ).create_comparison_levels()
         sql = levels[2].create_sql(None)
         assert "ST_Transform" not in sql
+
+
+class _ComparatorValidationMixin:
+    """Shared validation tests for ratio-threshold comparator classes."""
+
+    cls = None
+    threshold_arg = None  # keyword name for the threshold parameter
+
+    def _make(self, col, threshold):
+        return self.cls(col, **{self.threshold_arg: threshold})
+
+    def test_empty_col_name_raises(self):
+        with pytest.raises(TypeError, match="col_name"):
+            self._make("", 0.5)
+
+    def test_non_string_col_name_raises(self):
+        with pytest.raises(TypeError, match="col_name"):
+            self._make(None, 0.5)
+
+    def test_empty_threshold_list_raises(self):
+        with pytest.raises(ValueError):
+            self._make("geometry", [])
+
+    def test_threshold_out_of_range_raises(self):
+        with pytest.raises(ValueError, match="threshold"):
+            self._make("geometry", 1.5)
+
+    def test_threshold_zero_raises(self):
+        with pytest.raises(ValueError, match="threshold"):
+            self._make("geometry", 0)
+
+    def test_threshold_in_list_out_of_range_raises(self):
+        with pytest.raises(ValueError, match="threshold"):
+            self._make("geometry", [0.9, 0.0])
+
+
+class TestGeoOverlapValidation(_ComparatorValidationMixin):
+    cls = gcl.GeoOverlap
+    threshold_arg = "overlap_threshold_or_thresholds"
+
+
+class TestGeoJaccardValidation(_ComparatorValidationMixin):
+    cls = gcl.GeoJaccard
+    threshold_arg = "score_threshold_or_thresholds"
+
+
+class TestGeoSizeRatioValidation(_ComparatorValidationMixin):
+    cls = gcl.GeoSizeRatio
+    threshold_arg = "size_ratio_threshold_or_thresholds"
+
+
+class TestGeoDistanceValidation:
+    def test_empty_col_name_raises(self):
+        with pytest.raises(TypeError, match="col_name"):
+            gcl.GeoDistance("", 100)
+
+    def test_empty_threshold_list_raises(self):
+        with pytest.raises(ValueError):
+            gcl.GeoDistance("geometry", [])
+
+    def test_threshold_zero_raises(self):
+        with pytest.raises(ValueError, match="threshold"):
+            gcl.GeoDistance("geometry", 0)
+
+    def test_threshold_negative_raises(self):
+        with pytest.raises(ValueError, match="threshold"):
+            gcl.GeoDistance("geometry", -50)
+
+    def test_threshold_in_list_negative_raises(self):
+        with pytest.raises(ValueError, match="threshold"):
+            gcl.GeoDistance("geometry", [100, -1])
+
+    def test_use_centroid_non_bool_raises(self):
+        with pytest.raises(TypeError, match="use_centroid"):
+            gcl.GeoDistance("geometry", 100, use_centroid=1, crs=_PROJECTED)
+
+    def test_thresholds_coerced_to_float(self):
+        comp = gcl.GeoDistance("geometry", 100, crs=_PROJECTED)
+        assert all(type(t) is float for t in comp.thresholds)
+
+    def test_ascending_order_warning(self):
+        with pytest.warns(UserWarning, match="ascending"):
+            gcl.GeoDistance("geometry", [500, 100], crs=_PROJECTED)
+
+    def test_correct_ascending_order_no_warning(self):
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", UserWarning)
+            gcl.GeoDistance("geometry", [100, 500], crs=_PROJECTED)
+
+
+class TestThresholdOrderingWarnings:
+    """Out-of-order thresholds emit a UserWarning at construction time."""
+
+    def test_overlap_descending_no_warning(self):
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", UserWarning)
+            gcl.GeoOverlap("geometry", [0.9, 0.5])
+
+    def test_overlap_ascending_warns(self):
+        with pytest.warns(UserWarning, match="descending"):
+            gcl.GeoOverlap("geometry", [0.5, 0.9])
+
+    def test_jaccard_ascending_warns(self):
+        with pytest.warns(UserWarning, match="descending"):
+            gcl.GeoJaccard("geometry", [0.3, 0.8])
+
+    def test_size_ratio_ascending_warns(self):
+        with pytest.warns(UserWarning, match="descending"):
+            gcl.GeoSizeRatio("geometry", [0.25, 0.5])
+
+    def test_thresholds_coerced_to_float_overlap(self):
+        comp = gcl.GeoOverlap("geometry", [0.9, 0.5])
+        assert all(type(t) is float for t in comp.thresholds)
+
+    def test_thresholds_coerced_to_float_jaccard(self):
+        comp = gcl.GeoJaccard("geometry", [0.9, 0.5])
+        assert all(type(t) is float for t in comp.thresholds)
+
+    def test_thresholds_coerced_to_float_size_ratio(self):
+        comp = gcl.GeoSizeRatio("geometry", [0.5, 0.25])
+        assert all(type(t) is float for t in comp.thresholds)

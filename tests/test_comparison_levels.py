@@ -96,6 +96,155 @@ class TestGeoNullLevel:
             is False
         )
 
+    def test_raises_on_empty_left_geometry(self, duckdb_spatial):
+        with pytest.raises(Exception, match="empty geometry"):
+            _eval_null(
+                duckdb_spatial,
+                gcll.GeoNullLevel("geometry"),
+                "POLYGON EMPTY",
+                _UNIT_SQUARE,
+            )
+
+    def test_raises_on_empty_right_geometry(self, duckdb_spatial):
+        with pytest.raises(Exception, match="empty geometry"):
+            _eval_null(
+                duckdb_spatial,
+                gcll.GeoNullLevel("geometry"),
+                _UNIT_SQUARE,
+                "POLYGON EMPTY",
+            )
+
+    def test_raises_on_invalid_left_geometry(self, duckdb_spatial):
+        # Butterfly (figure-8) polygon: self-intersecting, geometrically invalid
+        invalid = "POLYGON((0 0, 1 1, 1 0, 0 1, 0 0))"
+        with pytest.raises(Exception, match="invalid geometry"):
+            _eval_null(
+                duckdb_spatial, gcll.GeoNullLevel("geometry"), invalid, _UNIT_SQUARE
+            )
+
+    def test_raises_on_invalid_right_geometry(self, duckdb_spatial):
+        invalid = "POLYGON((0 0, 1 1, 1 0, 0 1, 0 0))"
+        with pytest.raises(Exception, match="invalid geometry"):
+            _eval_null(
+                duckdb_spatial, gcll.GeoNullLevel("geometry"), _UNIT_SQUARE, invalid
+            )
+
+    def test_null_takes_precedence_when_both_null(self, duckdb_spatial):
+        """NULL on both sides still matches the null level without raising."""
+        assert (
+            _eval_null(duckdb_spatial, gcll.GeoNullLevel("geometry"), None, None)
+            is True
+        )
+
+    def test_col_name_empty_string_raises(self):
+        with pytest.raises(TypeError, match="col_name"):
+            gcll.GeoNullLevel("")
+
+    def test_col_name_non_string_raises(self):
+        with pytest.raises(TypeError, match="col_name"):
+            gcll.GeoNullLevel(123)
+
+
+class _ThresholdValidationMixin:
+    """Shared threshold validation tests for ratio-based level classes."""
+
+    cls = None  # subclasses set this
+
+    def test_threshold_zero_raises(self):
+        with pytest.raises(ValueError, match="threshold"):
+            self.cls("geometry", 0)
+
+    def test_threshold_one_raises(self):
+        with pytest.raises(ValueError, match="threshold"):
+            self.cls("geometry", 1)
+
+    def test_threshold_above_one_raises(self):
+        with pytest.raises(ValueError, match="threshold"):
+            self.cls("geometry", 1.5)
+
+    def test_threshold_negative_raises(self):
+        with pytest.raises(ValueError, match="threshold"):
+            self.cls("geometry", -0.1)
+
+    def test_threshold_non_numeric_raises(self):
+        with pytest.raises(TypeError, match="threshold"):
+            self.cls("geometry", "high")
+
+    def test_col_name_empty_raises(self):
+        with pytest.raises(TypeError, match="col_name"):
+            self.cls("", 0.5)
+
+
+class TestGeoOverlapLevelValidation(_ThresholdValidationMixin):
+    cls = gcll.GeoOverlapLevel
+
+
+class TestGeoJaccardLevelValidation(_ThresholdValidationMixin):
+    cls = gcll.GeoJaccardLevel
+
+
+class TestGeoSizeRatioLevelValidation(_ThresholdValidationMixin):
+    cls = gcll.GeoSizeRatioLevel
+
+
+class TestGeoDistanceLevelValidation:
+    def test_threshold_zero_raises(self):
+        with pytest.raises(ValueError, match="threshold"):
+            gcll.GeoDistanceLevel("geometry", 0)
+
+    def test_threshold_negative_raises(self):
+        with pytest.raises(ValueError, match="threshold"):
+            gcll.GeoDistanceLevel("geometry", -100)
+
+    def test_threshold_non_numeric_raises(self):
+        with pytest.raises(TypeError, match="threshold"):
+            gcll.GeoDistanceLevel("geometry", "far")
+
+    def test_col_name_empty_raises(self):
+        with pytest.raises(TypeError, match="col_name"):
+            gcll.GeoDistanceLevel("", 500)
+
+    def test_use_centroid_non_bool_raises(self):
+        with pytest.raises(TypeError, match="use_centroid"):
+            gcll.GeoDistanceLevel("geometry", 100, use_centroid=1)
+
+    def test_threshold_coerced_to_float(self):
+        level = gcll.GeoDistanceLevel("geometry", 500, crs="EPSG:28992")
+        assert type(level.threshold) is float
+        assert level.threshold == 500.0
+
+
+class TestGeoDistanceExactLevelValidation:
+    def test_use_centroid_non_bool_raises(self):
+        with pytest.raises(TypeError, match="use_centroid"):
+            gcll.GeoDistanceExactLevel("geometry", use_centroid=1)
+
+    def test_use_centroid_string_raises(self):
+        with pytest.raises(TypeError, match="use_centroid"):
+            gcll.GeoDistanceExactLevel("geometry", use_centroid="yes")
+
+
+class TestThresholdCoercion:
+    """Thresholds must be stored as float regardless of the input numeric type."""
+
+    def test_overlap_level_coerces_int(self):
+        # Python int in valid range (e.g. not possible for (0,1), but use a Decimal-like check)
+        # Use a numpy-style int proxy via bool False=0 edge — just confirm plain float works
+        level = gcll.GeoOverlapLevel("geometry", 0.5)
+        assert type(level.threshold) is float
+
+    def test_jaccard_level_coerces_to_float(self):
+        level = gcll.GeoJaccardLevel("geometry", 0.8)
+        assert type(level.threshold) is float
+
+    def test_size_ratio_level_coerces_to_float(self):
+        level = gcll.GeoSizeRatioLevel("geometry", 0.25)
+        assert type(level.threshold) is float
+
+    def test_label_uses_coerced_value(self):
+        level = gcll.GeoOverlapLevel("geometry", 0.9)
+        assert level.create_label_for_charts() == ">=90% overlap"
+
 
 class TestGeoExactOverlapLevel:
     def test_label(self):

@@ -24,6 +24,14 @@ from splink.internals.misc import ensure_is_iterable
 
 from geosplink.crs import resolve_crs
 import geosplink.geo_comparison_level_library as gcll
+from geosplink.geo_comparison_level_library import (
+    _check_col_name,
+    _check_ratio_threshold,
+    _check_distance_threshold,
+    _check_use_centroid,
+    _warn_thresholds_descending,
+    _warn_thresholds_ascending,
+)
 
 
 class GeoOverlap(ComparisonCreator):
@@ -65,8 +73,14 @@ class GeoOverlap(ComparisonCreator):
             Requires bounding box columns in the data: bbox_minx, bbox_miny, bbox_maxx,
             bbox_maxy (Splink will expect _l/_r suffixed versions in comparisons).
         """
+        _check_col_name(col_name, "GeoOverlap")
         thresholds_as_iterable = ensure_is_iterable(overlap_threshold_or_thresholds)
-        self.thresholds = [*thresholds_as_iterable]
+        self.thresholds = [
+            _check_ratio_threshold(t, "GeoOverlap") for t in thresholds_as_iterable
+        ]
+        if not self.thresholds:
+            raise ValueError("GeoOverlap: at least one threshold is required")
+        _warn_thresholds_descending(self.thresholds, "GeoOverlap")
         self._col_name = col_name
         super().__init__(col_name)
 
@@ -131,8 +145,14 @@ class GeoJaccard(ComparisonCreator):
             Requires bounding box columns in the data: bbox_minx, bbox_miny, bbox_maxx,
             bbox_maxy (Splink will expect _l/_r suffixed versions in comparisons).
         """
+        _check_col_name(col_name, "GeoJaccard")
         thresholds_as_iterable = ensure_is_iterable(score_threshold_or_thresholds)
-        self.thresholds = [*thresholds_as_iterable]
+        self.thresholds = [
+            _check_ratio_threshold(t, "GeoJaccard") for t in thresholds_as_iterable
+        ]
+        if not self.thresholds:
+            raise ValueError("GeoJaccard: at least one threshold is required")
+        _warn_thresholds_descending(self.thresholds, "GeoJaccard")
         self._col_name = col_name
         super().__init__(col_name)
 
@@ -192,8 +212,14 @@ class GeoSizeRatio(ComparisonCreator):
                 A single threshold or list of thresholds for size ratio levels.
                 Defaults to [0.5, 0.25] for >=50% and >=25% size ratio levels.
         """
+        _check_col_name(col_name, "GeoSizeRatio")
         thresholds_as_iterable = ensure_is_iterable(size_ratio_threshold_or_thresholds)
-        self.thresholds = [*thresholds_as_iterable]
+        self.thresholds = [
+            _check_ratio_threshold(t, "GeoSizeRatio") for t in thresholds_as_iterable
+        ]
+        if not self.thresholds:
+            raise ValueError("GeoSizeRatio: at least one threshold is required")
+        _warn_thresholds_descending(self.thresholds, "GeoSizeRatio")
         self._col_name = col_name
         super().__init__(col_name)
 
@@ -271,8 +297,19 @@ class GeoDistance(ComparisonCreator):
                 your data preparation. Emits ``UserWarning`` when omitted or
                 unrecognised.
         """
+        _check_col_name(col_name, "GeoDistance")
+        if distance_type != "euclidean":
+            raise ValueError(
+                f"GeoDistance: unsupported distance_type {distance_type!r}, must be 'euclidean'"
+            )
+        _check_use_centroid(use_centroid, "GeoDistance")
         thresholds_as_iterable = ensure_is_iterable(distance_threshold_or_thresholds)
-        self.thresholds = [*thresholds_as_iterable]
+        self.thresholds = [
+            _check_distance_threshold(t, "GeoDistance") for t in thresholds_as_iterable
+        ]
+        if not self.thresholds:
+            raise ValueError("GeoDistance: at least one threshold is required")
+        _warn_thresholds_ascending(self.thresholds, "GeoDistance")
         self._col_name = col_name
         self.distance_type = distance_type
         self.use_centroid = use_centroid
@@ -282,38 +319,37 @@ class GeoDistance(ComparisonCreator):
         super().__init__(col_name)
 
     def create_comparison_levels(self) -> List[ComparisonLevelCreator]:
-        if self.distance_type == "euclidean":
-            unit = " m" if self._crs_type in ("geographic", "projected") else ""
-            return [
-                gcll.GeoNullLevel(self._col_name),
-                gcll.GeoDistanceExactLevel(
+        unit = " m" if self._crs_type in ("geographic", "projected") else ""
+        return [
+            gcll.GeoNullLevel(self._col_name),
+            gcll.GeoDistanceExactLevel(
+                self._col_name,
+                use_centroid=self.use_centroid,
+            ),
+            *[
+                gcll.GeoDistanceLevel(
                     self._col_name,
+                    t,
                     use_centroid=self.use_centroid,
-                ),
-                *[
-                    gcll.GeoDistanceLevel(
-                        self._col_name,
-                        t,
-                        use_centroid=self.use_centroid,
-                        _epsg=self._epsg,
-                        _crs_type=self._crs_type,
-                        _pre_resolved=True,
-                    )
-                    for t in self.thresholds
-                ],
-                CustomLevel(
-                    "ELSE",
-                    label_for_charts=f"> {self.thresholds[-1]}{unit} distance",
-                ),
-            ]
-        else:
-            raise ValueError(f"Unsupported distance type: {self.distance_type}")
+                    _epsg=self._epsg,
+                    _crs_type=self._crs_type,
+                    _pre_resolved=True,
+                )
+                for t in self.thresholds
+            ],
+            CustomLevel(
+                "ELSE",
+                label_for_charts=f"> {self.thresholds[-1]:g}{unit} distance",
+            ),
+        ]
 
     def create_description(self) -> str:
         unit = " m" if self._crs_type in ("geographic", "projected") else ""
-        thresholds_str = ", ".join(f"{t}{unit}" for t in self.thresholds)
+        thresholds_str = ", ".join(f"{t:g}{unit}" for t in self.thresholds)
         plural = "s" if len(self.thresholds) > 1 else ""
-        exact_label = "Exact centroid match" if self.use_centroid else "Exact location match"
+        exact_label = (
+            "Exact centroid match" if self.use_centroid else "Exact location match"
+        )
         distance_label = "Centroid distance" if self.use_centroid else "Distance"
         return (
             f"{exact_label} '{self._col_name}' vs. "

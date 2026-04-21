@@ -19,13 +19,84 @@ Note:
 
 from __future__ import annotations
 
-from typing import Optional, Union
+import warnings
+from typing import List, Optional, Union
 
 from splink.internals.column_expression import ColumnExpression
 from splink.internals.comparison_level_creator import ComparisonLevelCreator
 from splink.internals.dialects import SplinkDialect
 
 from geosplink.crs import CRSInput, resolve_crs
+
+
+def _check_col_name(col_name: str, cls_name: str) -> None:
+    if not isinstance(col_name, str) or not col_name.strip():
+        raise TypeError(
+            f"{cls_name}: col_name must be a non-empty string, got {col_name!r}"
+        )
+
+
+def _check_ratio_threshold(threshold: float, cls_name: str) -> float:
+    """Validate and return threshold as a float in (0, 1)."""
+    try:
+        t = float(threshold)
+    except (TypeError, ValueError):
+        raise TypeError(
+            f"{cls_name}: threshold must be a number, got {threshold!r}"
+        ) from None
+    if not (0 < t < 1):
+        raise ValueError(f"{cls_name}: threshold must be in (0, 1), got {t}")
+    return t
+
+
+def _check_distance_threshold(threshold: float, cls_name: str) -> float:
+    """Validate and return threshold as a float > 0."""
+    try:
+        t = float(threshold)
+    except (TypeError, ValueError):
+        raise TypeError(
+            f"{cls_name}: threshold must be a number, got {threshold!r}"
+        ) from None
+    if t <= 0:
+        raise ValueError(f"{cls_name}: distance threshold must be > 0, got {t}")
+    return t
+
+
+def _check_use_centroid(use_centroid: bool, cls_name: str) -> None:
+    if not isinstance(use_centroid, bool):
+        raise TypeError(
+            f"{cls_name}: use_centroid must be a bool, got {use_centroid!r}"
+        )
+
+
+def _warn_thresholds_descending(thresholds: List[float], cls_name: str) -> None:
+    """Warn if ratio thresholds are not in descending order."""
+    for i in range(len(thresholds) - 1):
+        if thresholds[i] < thresholds[i + 1]:
+            warnings.warn(
+                f"{cls_name}: thresholds should be in descending order so that "
+                f"stricter levels are evaluated first (got {thresholds}). "
+                "A threshold at position i+1 that is larger than position i "
+                "can never be reached.",
+                UserWarning,
+                stacklevel=3,
+            )
+            break
+
+
+def _warn_thresholds_ascending(thresholds: List[float], cls_name: str) -> None:
+    """Warn if distance thresholds are not in ascending order."""
+    for i in range(len(thresholds) - 1):
+        if thresholds[i] > thresholds[i + 1]:
+            warnings.warn(
+                f"{cls_name}: distance thresholds should be in ascending order so "
+                f"that stricter levels are evaluated first (got {thresholds}). "
+                "A threshold at position i+1 that is smaller than position i "
+                "can never be reached.",
+                UserWarning,
+                stacklevel=3,
+            )
+            break
 
 
 def _geom_expr(
@@ -52,16 +123,38 @@ class GeoNullLevel(ComparisonLevelCreator):
     Comparison level for missing geometry data.
     Matches any pair where either or both geometry columns are NULL.
 
+    Non-NULL empty geometries (``ST_IsEmpty``) and geometrically invalid geometries
+    (``ST_IsValid`` is FALSE, e.g. self-intersecting polygons) raise a hard error
+    at query time rather than producing silently incorrect spatial metrics.
+    NULL takes precedence: a NULL + invalid pair still routes to this level.
+
     Args:
         col_name (str): Name of the WKT geometry column.
     """
 
     def __init__(self, col_name: str):
+        _check_col_name(col_name, "GeoNullLevel")
         self._col_name = col_name
         self.is_null_level = True
 
     def create_sql(self, sql_dialect: SplinkDialect) -> str:
-        return f"{self._col_name}_l IS NULL OR {self._col_name}_r IS NULL"
+        l, r = f"{self._col_name}_l", f"{self._col_name}_r"
+        col = self._col_name
+        # NULL is checked first so a NULL + invalid pair still routes to the null level.
+        # Empty and invalid (non-NULL) geometries raise a hard error rather than silently
+        # producing incorrect spatial metrics.
+        return (
+            f"CASE WHEN {l} IS NULL OR {r} IS NULL THEN TRUE "
+            f"WHEN ST_IsEmpty(ST_GeomFromText({l})) "
+            f"THEN error('geosplink: empty geometry in {col}_l') "
+            f"WHEN ST_IsEmpty(ST_GeomFromText({r})) "
+            f"THEN error('geosplink: empty geometry in {col}_r') "
+            f"WHEN NOT ST_IsValid(ST_GeomFromText({l})) "
+            f"THEN error('geosplink: invalid geometry in {col}_l') "
+            f"WHEN NOT ST_IsValid(ST_GeomFromText({r})) "
+            f"THEN error('geosplink: invalid geometry in {col}_r') "
+            f"ELSE FALSE END"
+        )
 
     def create_label_for_charts(self) -> str:
         return "Null"
@@ -77,6 +170,7 @@ class GeoExactOverlapLevel(ComparisonLevelCreator):
     """
 
     def __init__(self, col_name: str):
+        _check_col_name(col_name, "GeoExactOverlapLevel")
         self._col_name = col_name
 
     def create_sql(self, sql_dialect: SplinkDialect) -> str:
@@ -103,6 +197,7 @@ class GeoAnyOverlapLevel(ComparisonLevelCreator):
     """
 
     def __init__(self, col_name: str):
+        _check_col_name(col_name, "GeoAnyOverlapLevel")
         self._col_name = col_name
 
     def create_sql(self, sql_dialect: SplinkDialect) -> str:
@@ -130,8 +225,9 @@ class GeoOverlapLevel(ComparisonLevelCreator):
     """
 
     def __init__(self, col_name: str, threshold: float):
+        _check_col_name(col_name, "GeoOverlapLevel")
         self._col_name = col_name
-        self.threshold = threshold
+        self.threshold = _check_ratio_threshold(threshold, "GeoOverlapLevel")
 
     def create_sql(self, sql_dialect: SplinkDialect) -> str:
         l, r = f"{self._col_name}_l", f"{self._col_name}_r"
@@ -166,8 +262,9 @@ class GeoJaccardLevel(ComparisonLevelCreator):
     """
 
     def __init__(self, col_name: str, threshold: float):
+        _check_col_name(col_name, "GeoJaccardLevel")
         self._col_name = col_name
-        self.threshold = threshold
+        self.threshold = _check_ratio_threshold(threshold, "GeoJaccardLevel")
 
     def create_sql(self, sql_dialect: SplinkDialect) -> str:
         l, r = f"{self._col_name}_l", f"{self._col_name}_r"
@@ -206,6 +303,7 @@ class GeoSizeExactLevel(ComparisonLevelCreator):
     """
 
     def __init__(self, col_name: str):
+        _check_col_name(col_name, "GeoSizeExactLevel")
         self._col_name = col_name
 
     def create_sql(self, sql_dialect: SplinkDialect) -> str:
@@ -226,8 +324,9 @@ class GeoSizeRatioLevel(ComparisonLevelCreator):
     """
 
     def __init__(self, col_name: str, threshold: float):
+        _check_col_name(col_name, "GeoSizeRatioLevel")
         self._col_name = col_name
-        self.threshold = threshold
+        self.threshold = _check_ratio_threshold(threshold, "GeoSizeRatioLevel")
 
     def create_sql(self, sql_dialect: SplinkDialect) -> str:
         l, r = f"{self._col_name}_l", f"{self._col_name}_r"
@@ -260,6 +359,8 @@ class GeoDistanceExactLevel(ComparisonLevelCreator):
     """
 
     def __init__(self, col_name: str, use_centroid: bool = False):
+        _check_col_name(col_name, "GeoDistanceExactLevel")
+        _check_use_centroid(use_centroid, "GeoDistanceExactLevel")
         self._col_name = col_name
         self.use_centroid = use_centroid
 
@@ -308,8 +409,10 @@ class GeoDistanceLevel(ComparisonLevelCreator):
         _crs_type: Optional[str] = None,
         _pre_resolved: bool = False,
     ):
+        _check_col_name(col_name, "GeoDistanceLevel")
+        _check_use_centroid(use_centroid, "GeoDistanceLevel")
         self._col_name = col_name
-        self.threshold = threshold
+        self.threshold = _check_distance_threshold(threshold, "GeoDistanceLevel")
         self.use_centroid = use_centroid
         if _pre_resolved:
             self._epsg, self._crs_type = _epsg, _crs_type
@@ -325,4 +428,4 @@ class GeoDistanceLevel(ComparisonLevelCreator):
     def create_label_for_charts(self) -> str:
         prefix = "Centroid distance" if self.use_centroid else "Distance"
         unit = " m" if self._crs_type in ("geographic", "projected") else ""
-        return f"{prefix} <= {self.threshold}{unit}"
+        return f"{prefix} <= {self.threshold:g}{unit}"
