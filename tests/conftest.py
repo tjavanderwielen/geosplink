@@ -1,11 +1,10 @@
 # tests/conftest.py
 import pytest
-import duckdb
+import geosplink
 
 
 @pytest.fixture
 def duckdb_spatial():
-    con = duckdb.connect(":memory:")
-    con.execute("INSTALL spatial; LOAD spatial;")
-    yield con
-    con.close()
+    db_api = geosplink.DuckDBAPI()
+    yield db_api._con
+    db_api._con.close()
