@@ -19,9 +19,12 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Data - for future use
-notebooks/
+# Data
 sandbox_data/
 # *.csv
 # *.parquet
 # *.duckdb
+
+# Local test files
+notebooks/
+scratch/
