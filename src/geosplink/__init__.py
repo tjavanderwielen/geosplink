@@ -2,7 +2,7 @@
 GeoSplink — geospatial comparator classes for Splink record linkage.
 
 Usage:
-    from GeoSplink import GeoOverlap, GeoJaccard, GeoSizeRatio
+    from GeoSplink import GeoOverlap, GeoJaccard, GeoSizeRatio, GeoDistance, etc.
     from GeoSplink import gcll  # for individual level classes
 """
 

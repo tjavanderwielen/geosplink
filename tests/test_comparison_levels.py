@@ -506,10 +506,18 @@ def _eval_distance(con, level, wkt_l, wkt_r):
     ).fetchone()[0]
 
 
+_PROJECTED = (
+    "EPSG:28992"  # RD New — projected, metres, used throughout to suppress CRS warnings
+)
+_GEOGRAPHIC = "EPSG:4326"  # WGS 84 — geographic, triggers ST_Transform path
+
+
 class TestGeoDistanceExactLevel:
     def test_label_geometry(self):
         assert (
-            gcll.GeoDistanceExactLevel("geometry").create_label_for_charts()
+            gcll.GeoDistanceExactLevel(
+                "geometry",
+            ).create_label_for_charts()
             == "Exact location match"
         )
 
@@ -554,52 +562,98 @@ class TestGeoDistanceExactLevel:
 
 
 class TestGeoDistanceLevel:
-    def test_label_geometry(self):
-        assert (
-            gcll.GeoDistanceLevel("geometry", 100).create_label_for_charts()
-            == "Distance <= 100"
-        )
-
-    def test_label_centroid(self):
+    def test_label_projected(self):
         assert (
             gcll.GeoDistanceLevel(
-                "geometry", 100, use_centroid=True
+                "geometry", 100, crs=_PROJECTED
             ).create_label_for_charts()
-            == "Centroid distance <= 100"
+            == "Distance <= 100 m"
+        )
+
+    def test_label_geographic(self):
+        assert (
+            gcll.GeoDistanceLevel(
+                "geometry", 100, crs=_GEOGRAPHIC
+            ).create_label_for_charts()
+            == "Distance <= 100 m"
+        )
+
+    def test_label_no_crs_omits_unit(self):
+        with pytest.warns(UserWarning):
+            level = gcll.GeoDistanceLevel("geometry", 100)
+        assert level.create_label_for_charts() == "Distance <= 100"
+
+    def test_label_centroid_projected(self):
+        assert (
+            gcll.GeoDistanceLevel(
+                "geometry", 100, use_centroid=True, crs=_PROJECTED
+            ).create_label_for_charts()
+            == "Centroid distance <= 100 m"
         )
 
     def test_sql_embeds_threshold(self):
-        sql = gcll.GeoDistanceLevel("geometry", 500).create_sql(None)
+        sql = gcll.GeoDistanceLevel("geometry", 500, crs=_PROJECTED).create_sql(None)
         assert "500" in sql
         assert "<=" in sql
 
     def test_sql_uses_centroid_when_requested(self):
-        sql = gcll.GeoDistanceLevel("geometry", 100, use_centroid=True).create_sql(None)
+        sql = gcll.GeoDistanceLevel(
+            "geometry", 100, use_centroid=True, crs=_PROJECTED
+        ).create_sql(None)
         assert "ST_Centroid" in sql
 
     def test_sql_no_centroid_by_default(self):
-        sql = gcll.GeoDistanceLevel("geometry", 100).create_sql(None)
+        sql = gcll.GeoDistanceLevel("geometry", 100, crs=_PROJECTED).create_sql(None)
         assert "ST_Centroid" not in sql
+
+    def test_sql_projected_no_transform(self):
+        sql = gcll.GeoDistanceLevel("geometry", 100, crs=_PROJECTED).create_sql(None)
+        assert "ST_Transform" not in sql
+
+    def test_sql_geographic_uses_transform(self):
+        sql = gcll.GeoDistanceLevel("geometry", 100, crs=_GEOGRAPHIC).create_sql(None)
+        assert "ST_Transform" in sql
+        assert "4326" in sql
+        assert "3857" in sql
+
+    def test_sql_geographic_centroid_applied_before_transform(self):
+        # ST_Transform wraps ST_Centroid — centroid is computed in original CRS, then reprojected
+        sql = gcll.GeoDistanceLevel(
+            "geometry", 100, use_centroid=True, crs=_GEOGRAPHIC
+        ).create_sql(None)
+        assert "ST_Transform(ST_Centroid(" in sql
+
+    def test_no_crs_warns(self):
+        with pytest.warns(UserWarning, match="no CRS supplied"):
+            gcll.GeoDistanceLevel("geometry", 100)
+
+    def test_unknown_epsg_warns(self):
+        with pytest.warns(UserWarning, match="not in geosplink's known CRS list"):
+            gcll.GeoDistanceLevel("geometry", 100, crs="EPSG:9999")
 
     def test_passes_within_threshold(self, duckdb_spatial):
         # distance from origin to (3,4) = 5.0
-        level = gcll.GeoDistanceLevel("geometry", 10)
+        level = gcll.GeoDistanceLevel("geometry", 10, crs=_PROJECTED)
         assert _eval_distance(duckdb_spatial, level, _POINT_ORIGIN, _POINT_3_4) is True
 
     def test_fails_beyond_threshold(self, duckdb_spatial):
-        level = gcll.GeoDistanceLevel("geometry", 3)
+        level = gcll.GeoDistanceLevel("geometry", 3, crs=_PROJECTED)
         assert _eval_distance(duckdb_spatial, level, _POINT_ORIGIN, _POINT_3_4) is False
 
     def test_passes_at_exact_threshold(self, duckdb_spatial):
         # distance = 5.0, threshold = 5.0
-        level = gcll.GeoDistanceLevel("geometry", 5.0)
+        level = gcll.GeoDistanceLevel("geometry", 5.0, crs=_PROJECTED)
         assert _eval_distance(duckdb_spatial, level, _POINT_ORIGIN, _POINT_3_4) is True
 
     def test_centroid_distance(self, duckdb_spatial):
         # centroid of unit square = (0.5, 0.5), centroid of far square = (2.5, 0.5), distance = 2.0
-        level = gcll.GeoDistanceLevel("geometry", 3.0, use_centroid=True)
+        level = gcll.GeoDistanceLevel(
+            "geometry", 3.0, use_centroid=True, crs=_PROJECTED
+        )
         assert _eval_distance(duckdb_spatial, level, _UNIT_SQUARE, _FAR_SQUARE) is True
 
     def test_centroid_fails_threshold(self, duckdb_spatial):
-        level = gcll.GeoDistanceLevel("geometry", 1.0, use_centroid=True)
+        level = gcll.GeoDistanceLevel(
+            "geometry", 1.0, use_centroid=True, crs=_PROJECTED
+        )
         assert _eval_distance(duckdb_spatial, level, _UNIT_SQUARE, _FAR_SQUARE) is False

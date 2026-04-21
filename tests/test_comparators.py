@@ -139,64 +139,120 @@ class TestGeoSizeRatio:
         assert levels[-1].create_label_for_charts() == "<75% size ratio"
 
 
+_PROJECTED = "EPSG:28992"  # RD New — projected, metres
+
+
 class TestGeoDistance:
     def test_single_threshold_normalised_to_list(self):
-        assert gcl.GeoDistance("geometry", 100).thresholds == [100]
+        assert gcl.GeoDistance("geometry", 100, crs=_PROJECTED).thresholds == [100]
 
     def test_list_thresholds_preserved(self):
-        assert gcl.GeoDistance("geometry", [100, 500]).thresholds == [100, 500]
+        assert gcl.GeoDistance("geometry", [100, 500], crs=_PROJECTED).thresholds == [
+            100,
+            500,
+        ]
 
     def test_output_column_name(self):
-        assert gcl.GeoDistance("my_geom", 100).create_output_column_name() == "my_geom"
+        assert (
+            gcl.GeoDistance("my_geom", 100, crs=_PROJECTED).create_output_column_name()
+            == "my_geom"
+        )
 
     def test_level_count_single_threshold(self):
         # null + exact + 1 threshold + else = 4
-        assert len(gcl.GeoDistance("geometry", 100).create_comparison_levels()) == 4
+        assert (
+            len(
+                gcl.GeoDistance(
+                    "geometry", 100, crs=_PROJECTED
+                ).create_comparison_levels()
+            )
+            == 4
+        )
 
     def test_level_count_two_thresholds(self):
         # null + exact + 2 thresholds + else = 5
         assert (
-            len(gcl.GeoDistance("geometry", [100, 500]).create_comparison_levels()) == 5
+            len(
+                gcl.GeoDistance(
+                    "geometry", [100, 500], crs=_PROJECTED
+                ).create_comparison_levels()
+            )
+            == 5
         )
 
     def test_first_level_is_null(self):
-        levels = gcl.GeoDistance("geometry", 100).create_comparison_levels()
+        levels = gcl.GeoDistance(
+            "geometry", 100, crs=_PROJECTED
+        ).create_comparison_levels()
         assert isinstance(levels[0], gcll.GeoNullLevel)
 
     def test_second_level_is_distance_exact(self):
-        levels = gcl.GeoDistance("geometry", 100).create_comparison_levels()
+        levels = gcl.GeoDistance(
+            "geometry", 100, crs=_PROJECTED
+        ).create_comparison_levels()
         assert isinstance(levels[1], gcll.GeoDistanceExactLevel)
 
     def test_threshold_levels_correct_type_and_value(self):
-        levels = gcl.GeoDistance("geometry", [100, 500]).create_comparison_levels()
+        levels = gcl.GeoDistance(
+            "geometry", [100, 500], crs=_PROJECTED
+        ).create_comparison_levels()
         assert isinstance(levels[2], gcll.GeoDistanceLevel)
         assert levels[2].threshold == 100
         assert isinstance(levels[3], gcll.GeoDistanceLevel)
         assert levels[3].threshold == 500
 
     def test_no_any_overlap_level(self):
-        levels = gcl.GeoDistance("geometry", 100).create_comparison_levels()
+        levels = gcl.GeoDistance(
+            "geometry", 100, crs=_PROJECTED
+        ).create_comparison_levels()
         assert not any(isinstance(l, gcll.GeoAnyOverlapLevel) for l in levels)
 
-    def test_last_level_label_uses_highest_threshold(self):
-        levels = gcl.GeoDistance("geometry", [100, 500]).create_comparison_levels()
+    def test_last_level_label_with_known_crs(self):
+        levels = gcl.GeoDistance(
+            "geometry", [100, 500], crs=_PROJECTED
+        ).create_comparison_levels()
         assert isinstance(levels[-1], CustomLevel)
+        assert levels[-1].create_label_for_charts() == "> 500 m distance"
+
+    def test_last_level_label_no_crs_omits_unit(self):
+        with pytest.warns(UserWarning):
+            levels = gcl.GeoDistance("geometry", [100, 500]).create_comparison_levels()
         assert levels[-1].create_label_for_charts() == "> 500 distance"
 
     def test_use_centroid_passed_to_levels(self):
         levels = gcl.GeoDistance(
-            "geometry", 100, use_centroid=True
+            "geometry", 100, use_centroid=True, crs=_PROJECTED
         ).create_comparison_levels()
         assert levels[1].use_centroid is True
         assert levels[2].use_centroid is True
 
     def test_use_centroid_false_by_default(self):
-        levels = gcl.GeoDistance("geometry", 100).create_comparison_levels()
+        levels = gcl.GeoDistance(
+            "geometry", 100, crs=_PROJECTED
+        ).create_comparison_levels()
         assert levels[1].use_centroid is False
         assert levels[2].use_centroid is False
 
     def test_unsupported_distance_type_raises(self):
         with pytest.raises(ValueError, match="Unsupported distance type"):
             gcl.GeoDistance(
-                "geometry", 100, distance_type="haversine"
+                "geometry", 100, distance_type="haversine", crs=_PROJECTED
             ).create_comparison_levels()
+
+    def test_no_crs_warns(self):
+        with pytest.warns(UserWarning, match="no CRS supplied"):
+            gcl.GeoDistance("geometry", 100)
+
+    def test_geographic_crs_propagates_to_levels(self):
+        levels = gcl.GeoDistance(
+            "geometry", 100, crs="EPSG:4326"
+        ).create_comparison_levels()
+        sql = levels[2].create_sql(None)
+        assert "ST_Transform" in sql
+
+    def test_projected_crs_no_transform_in_levels(self):
+        levels = gcl.GeoDistance(
+            "geometry", 100, crs=_PROJECTED
+        ).create_comparison_levels()
+        sql = levels[2].create_sql(None)
+        assert "ST_Transform" not in sql
