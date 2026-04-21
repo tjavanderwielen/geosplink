@@ -79,6 +79,15 @@ class GeoOverlap(ComparisonCreator):
             CustomLevel("ELSE", label_for_charts="No overlap"),
         ]
 
+    def create_description(self) -> str:
+        thresholds_str = ", ".join(f"{int(t * 100)}%" for t in self.thresholds)
+        plural = "s" if len(self.thresholds) > 1 else ""
+        return (
+            f"Exact overlap '{self._col_name}' vs. "
+            f"overlap coefficient at threshold{plural} {thresholds_str} vs. "
+            "any overlap vs. anything else"
+        )
+
     def create_output_column_name(self) -> str:
         return self._col_name
 
@@ -136,6 +145,15 @@ class GeoJaccard(ComparisonCreator):
             CustomLevel("ELSE", label_for_charts="No overlap"),
         ]
 
+    def create_description(self) -> str:
+        thresholds_str = ", ".join(f"{int(t * 100)}%" for t in self.thresholds)
+        plural = "s" if len(self.thresholds) > 1 else ""
+        return (
+            f"Exact overlap '{self._col_name}' vs. "
+            f"Jaccard similarity at threshold{plural} {thresholds_str} vs. "
+            "any overlap vs. anything else"
+        )
+
     def create_output_column_name(self) -> str:
         return self._col_name
 
@@ -189,6 +207,15 @@ class GeoSizeRatio(ComparisonCreator):
                 label_for_charts=f"<{int(self.thresholds[-1] * 100)}% size ratio",
             ),
         ]
+
+    def create_description(self) -> str:
+        thresholds_str = ", ".join(f"{int(t * 100)}%" for t in self.thresholds)
+        plural = "s" if len(self.thresholds) > 1 else ""
+        return (
+            f"Exact size match '{self._col_name}' vs. "
+            f"size ratio at threshold{plural} {thresholds_str} vs. "
+            "anything else"
+        )
 
     def create_output_column_name(self) -> str:
         return self._col_name
@@ -281,6 +308,18 @@ class GeoDistance(ComparisonCreator):
             ]
         else:
             raise ValueError(f"Unsupported distance type: {self.distance_type}")
+
+    def create_description(self) -> str:
+        unit = " m" if self._crs_type in ("geographic", "projected") else ""
+        thresholds_str = ", ".join(f"{t}{unit}" for t in self.thresholds)
+        plural = "s" if len(self.thresholds) > 1 else ""
+        exact_label = "Exact centroid match" if self.use_centroid else "Exact location match"
+        distance_label = "Centroid distance" if self.use_centroid else "Distance"
+        return (
+            f"{exact_label} '{self._col_name}' vs. "
+            f"{distance_label} at threshold{plural} {thresholds_str} vs. "
+            "anything else"
+        )
 
     def create_output_column_name(self) -> str:
         return self._col_name
