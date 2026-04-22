@@ -1,25 +1,23 @@
 import pytest
 import geosplink.geo_comparison_level_library as gcll
 
-# WKT test geometries with precomputed bounding boxes
-_UNIT_SQUARE = "POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))"  # area=1
-_UNIT_BBOX = (0.0, 0.0, 1.0, 1.0)
+from tests.conftest import load_bbox, load_wkt
 
-_RIGHT_HALF = (
-    "POLYGON((0.5 0, 1.5 0, 1.5 1, 0.5 1, 0.5 0))"  # area=1, 50% overlap with unit
-)
-_RIGHT_HALF_BBOX = (0.5, 0.0, 1.5, 1.0)
+# Polygons
+_UNIT_SQUARE = load_wkt("unit_square")  # area=1
+_UNIT_BBOX = load_bbox("unit_square")
 
-_FAR_SQUARE = "POLYGON((2 0, 3 0, 3 1, 2 1, 2 0))"  # area=1, no overlap with unit
-_FAR_BBOX = (2.0, 0.0, 3.0, 1.0)
+_RIGHT_HALF = load_wkt("right_half")  # area=1, 50% overlap with unit square
+_RIGHT_HALF_BBOX = load_bbox("right_half")
 
-_LARGE_SQUARE = "POLYGON((0 0, 4 0, 4 4, 0 4, 0 0))"  # area=16, contains unit
-_LARGE_BBOX = (0.0, 0.0, 4.0, 4.0)
+_FAR_SQUARE = load_wkt("far_square")  # area=1, no overlap with unit square
+_FAR_BBOX = load_bbox("far_square")
 
-_SMALL_SQUARE = (
-    "POLYGON((0.1 0.1, 0.5 0.1, 0.5 0.5, 0.1 0.5, 0.1 0.1))"  # area=0.16, inside unit
-)
-_SMALL_BBOX = (0.1, 0.1, 0.5, 0.5)
+_LARGE_SQUARE = load_wkt("large_square")  # area=16, contains unit square
+_LARGE_BBOX = load_bbox("large_square")
+
+_SMALL_SQUARE = load_wkt("small_square")  # area=0.16, inside unit square
+_SMALL_BBOX = load_bbox("small_square")
 
 
 def _eval(con, level, wkt_l, bbox_l, wkt_r, bbox_r):
@@ -101,7 +99,7 @@ class TestGeoNullLevel:
             _eval_null(
                 duckdb_spatial,
                 gcll.GeoNullLevel("geometry"),
-                "POLYGON EMPTY",
+                load_wkt("polygon_empty"),
                 _UNIT_SQUARE,
             )
 
@@ -111,22 +109,26 @@ class TestGeoNullLevel:
                 duckdb_spatial,
                 gcll.GeoNullLevel("geometry"),
                 _UNIT_SQUARE,
-                "POLYGON EMPTY",
+                load_wkt("polygon_empty"),
             )
 
     def test_raises_on_invalid_left_geometry(self, duckdb_spatial):
         # Butterfly (figure-8) polygon: self-intersecting, geometrically invalid
-        invalid = "POLYGON((0 0, 1 1, 1 0, 0 1, 0 0))"
         with pytest.raises(Exception, match="invalid geometry"):
             _eval_null(
-                duckdb_spatial, gcll.GeoNullLevel("geometry"), invalid, _UNIT_SQUARE
+                duckdb_spatial,
+                gcll.GeoNullLevel("geometry"),
+                load_wkt("invalid_butterfly"),
+                _UNIT_SQUARE,
             )
 
     def test_raises_on_invalid_right_geometry(self, duckdb_spatial):
-        invalid = "POLYGON((0 0, 1 1, 1 0, 0 1, 0 0))"
         with pytest.raises(Exception, match="invalid geometry"):
             _eval_null(
-                duckdb_spatial, gcll.GeoNullLevel("geometry"), _UNIT_SQUARE, invalid
+                duckdb_spatial,
+                gcll.GeoNullLevel("geometry"),
+                _UNIT_SQUARE,
+                load_wkt("invalid_butterfly"),
             )
 
     def test_null_takes_precedence_when_both_null(self, duckdb_spatial):
@@ -643,9 +645,9 @@ class TestGeoSizeRatioLevel:
 
 
 # Points for distance tests — no bbox needed (GeoDistance levels don't use bbox)
-_POINT_ORIGIN = "POINT(0 0)"
-_POINT_3_4 = "POINT(3 4)"  # distance from origin = 5.0
-_POINT_NEAR = "POINT(0.5 0)"  # distance from origin = 0.5
+_POINT_ORIGIN = load_wkt("point_origin")
+_POINT_3_4 = load_wkt("point_3_4")  # distance from origin = 5.0
+_POINT_NEAR = load_wkt("point_near")  # distance from origin = 0.5
 
 
 def _eval_distance(con, level, wkt_l, wkt_r):

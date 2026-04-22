@@ -1,0 +1,12 @@
+name,wkt,minx,miny,maxx,maxy,description
+unit_square,"POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))",0.0,0.0,1.0,1.0,Unit square from (0,0) to (1,1); area=1
+right_half,"POLYGON((0.5 0, 1.5 0, 1.5 1, 0.5 1, 0.5 0))",0.5,0.0,1.5,1.0,Area=1; overlaps unit_square by 50%
+far_square,"POLYGON((2 0, 3 0, 3 1, 2 1, 2 0))",2.0,0.0,3.0,1.0,Area=1; disjoint from unit_square with a gap
+large_square,"POLYGON((0 0, 4 0, 4 4, 0 4, 0 0))",0.0,0.0,4.0,4.0,Area=16; contains unit_square entirely
+small_square,"POLYGON((0.1 0.1, 0.5 0.1, 0.5 0.5, 0.1 0.5, 0.1 0.1))",0.1,0.1,0.5,0.5,Area=0.16; fully inside unit_square
+adjacent_square,"POLYGON((1 0, 2 0, 2 1, 1 1, 1 0))",1.0,0.0,2.0,1.0,Area=1; shares right edge of unit_square but interiors do not overlap
+invalid_butterfly,"POLYGON((0 0, 1 1, 1 0, 0 1, 0 0))",,,,Self-intersecting (figure-8) polygon; geometrically invalid
+polygon_empty,POLYGON EMPTY,,,,Empty geometry; no coordinates
+point_origin,POINT(0 0),,,,Origin point; on the corner of unit_square
+point_3_4,POINT(3 4),,,,Point at (3,4); distance 5.0 from origin and ~3.61 from unit_square corner (1,1)
+point_near,POINT(0.5 0),,,,Point at (0.5,0); distance 0.5 from origin; on the bottom edge of unit_square
