@@ -19,6 +19,11 @@ _LARGE_BBOX = load_bbox("large_square")
 _SMALL_SQUARE = load_wkt("small_square")  # area=0.16, inside unit square
 _SMALL_BBOX = load_bbox("small_square")
 
+_ADJACENT_SQUARE = load_wkt(
+    "adjacent_square"
+)  # shares right edge of unit_square, no interior overlap
+_ADJACENT_BBOX = load_bbox("adjacent_square")
+
 
 def _eval(con, level, wkt_l, bbox_l, wkt_r, bbox_r):
     """Evaluate a level's SQL against two WKT geometries, returning the boolean result."""
@@ -353,6 +358,36 @@ class TestGeoAnyOverlapLevel:
             is False
         )
 
+    def test_matches_touching_boundary(self, duckdb_spatial):
+        # ST_Intersects returns True for polygons that share a boundary edge
+        level = gcll.GeoAnyOverlapLevel("geometry")
+        assert (
+            _eval(
+                duckdb_spatial,
+                level,
+                _UNIT_SQUARE,
+                _UNIT_BBOX,
+                _ADJACENT_SQUARE,
+                _ADJACENT_BBOX,
+            )
+            is True
+        )
+
+    def test_matches_contained(self, duckdb_spatial):
+        # large_square fully contains unit_square — ST_Intersects returns True
+        level = gcll.GeoAnyOverlapLevel("geometry")
+        assert (
+            _eval(
+                duckdb_spatial,
+                level,
+                _UNIT_SQUARE,
+                _UNIT_BBOX,
+                _LARGE_SQUARE,
+                _LARGE_BBOX,
+            )
+            is True
+        )
+
 
 class TestGeoOverlapLevel:
     def test_label(self):
@@ -447,6 +482,21 @@ class TestGeoOverlapLevel:
             is False
         )
 
+    def test_touching_boundary_fails_any_threshold(self, duckdb_spatial):
+        # intersection area = 0, so overlap ratio = 0 regardless of threshold
+        level = gcll.GeoOverlapLevel("geometry", 0.1)
+        assert (
+            _eval(
+                duckdb_spatial,
+                level,
+                _UNIT_SQUARE,
+                _UNIT_BBOX,
+                _ADJACENT_SQUARE,
+                _ADJACENT_BBOX,
+            )
+            is False
+        )
+
 
 class TestGeoJaccardLevel:
     def test_label(self):
@@ -517,6 +567,21 @@ class TestGeoJaccardLevel:
         assert (
             _eval(
                 duckdb_spatial, level, _UNIT_SQUARE, _UNIT_BBOX, _FAR_SQUARE, _FAR_BBOX
+            )
+            is False
+        )
+
+    def test_touching_boundary_fails_any_threshold(self, duckdb_spatial):
+        # intersection area = 0, union area = 2 → IoU = 0
+        level = gcll.GeoJaccardLevel("geometry", 0.1)
+        assert (
+            _eval(
+                duckdb_spatial,
+                level,
+                _UNIT_SQUARE,
+                _UNIT_BBOX,
+                _ADJACENT_SQUARE,
+                _ADJACENT_BBOX,
             )
             is False
         )
@@ -711,6 +776,17 @@ class TestGeoDistanceExactLevel:
         level = gcll.GeoDistanceExactLevel("geometry", use_centroid=True)
         assert _eval_distance(duckdb_spatial, level, _UNIT_SQUARE, _FAR_SQUARE) is False
 
+    def test_polygon_to_point_on_boundary(self, duckdb_spatial):
+        # point_origin POINT(0 0) lies on the corner of unit_square — ST_Distance = 0
+        level = gcll.GeoDistanceExactLevel("geometry")
+        assert (
+            _eval_distance(duckdb_spatial, level, _UNIT_SQUARE, _POINT_ORIGIN) is True
+        )
+
+    def test_polygon_to_point_not_on_boundary(self, duckdb_spatial):
+        level = gcll.GeoDistanceExactLevel("geometry")
+        assert _eval_distance(duckdb_spatial, level, _UNIT_SQUARE, _POINT_3_4) is False
+
 
 class TestGeoDistanceLevel:
     def test_label_projected(self):
@@ -808,3 +884,19 @@ class TestGeoDistanceLevel:
             "geometry", 1.0, use_centroid=True, crs=_PROJECTED
         )
         assert _eval_distance(duckdb_spatial, level, _UNIT_SQUARE, _FAR_SQUARE) is False
+
+    def test_polygon_to_point_within_threshold(self, duckdb_spatial):
+        # nearest point on unit_square to (3,4) is corner (1,1); distance = sqrt(13) ≈ 3.61
+        level = gcll.GeoDistanceLevel("geometry", 4.0, crs=_PROJECTED)
+        assert _eval_distance(duckdb_spatial, level, _UNIT_SQUARE, _POINT_3_4) is True
+
+    def test_polygon_to_point_fails_threshold(self, duckdb_spatial):
+        level = gcll.GeoDistanceLevel("geometry", 3.0, crs=_PROJECTED)
+        assert _eval_distance(duckdb_spatial, level, _UNIT_SQUARE, _POINT_3_4) is False
+
+    def test_polygon_to_point_centroid(self, duckdb_spatial):
+        # centroid of unit_square = (0.5, 0.5); distance to (3,4) = sqrt(6.25+12.25) ≈ 4.30
+        level = gcll.GeoDistanceLevel(
+            "geometry", 5.0, use_centroid=True, crs=_PROJECTED
+        )
+        assert _eval_distance(duckdb_spatial, level, _UNIT_SQUARE, _POINT_3_4) is True
