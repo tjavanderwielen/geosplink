@@ -11,6 +11,9 @@ requires-python = ">=3.10"
 license = "MIT"
 dependencies = ["splink>=4.0", "duckdb>=0.10"]
 
+[project.urls]
+Repository = "https://github.com/tjavanderwielen/geosplink"
+
 [project.optional-dependencies]
 dev = ["pytest>=7.0"]
 
