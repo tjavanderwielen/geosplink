@@ -24,18 +24,30 @@ Jaccard similarity (IoU): `intersection / union`. Symmetric. Preferred when both
 ### `GeoSizeRatio(col_name, thresholds=[0.5, 0.25])`
 Size ratio: `min(area_l, area_r) / max(area_l, area_r)`. Useful as an independent signal when geometries may not overlap but should be similar in scale.
 
+### `GeoDistance(col_name, distance_threshold_or_thresholds, distance_type="euclidean", use_centroid=False, crs=None)`
+Distance between two geometries (or their centroids, if `use_centroid=True`), compared against one or more thresholds. The `crs` parameter controls how thresholds are interpreted:
+
+- **Projected CRS** (e.g. `crs='EPSG:28992'`): distance is computed directly; thresholds are in metres.
+- **Geographic CRS** (e.g. `crs='EPSG:4326'`): geometries are reprojected to Web Mercator (EPSG:3857) before computing distance; thresholds are in metres (approximate — accuracy degrades above ~60° latitude).
+- **Unrecognised or omitted CRS** (`crs=None` or an EPSG code not in geosplink's known list): falls back to Euclidean distance in the geometries' native coordinate units, and emits a `UserWarning`.
+
+See `src/geosplink/crs.py` for the full list of recognised geographic and projected EPSG codes.
+
 
 ## Usage
 
 ```python
-from geosplink import GeoOverlap, GeoJaccard, GeoSizeRatio
+from geosplink import GeoOverlap, GeoJaccard, GeoSizeRatio, GeoDistance, DuckDBAPI
 
 settings = SettingsCreator(
     link_type="dedupe_only",
     comparisons=[
         GeoOverlap("geometry_wkt"),
+        GeoDistance("geometry_wkt", [100, 500], crs="EPSG:4326"),
     ],
 )
+
+db_api = DuckDBAPI()  # installs and loads the DuckDB spatial extension automatically
 ```
 
 Individual levels can also be composed into a `CustomComparison`:
@@ -56,7 +68,7 @@ comparison = CustomComparison(
 ## Requirements
 
 - [Splink](https://github.com/moj-analytical-services/splink)
-- DuckDB with the [spatial extension](https://duckdb.org/docs/extensions/spatial.html) (`INSTALL spatial; LOAD spatial;`)
+- DuckDB with the [spatial extension](https://duckdb.org/docs/extensions/spatial.html). Use `geosplink.DuckDBAPI` in place of Splink's `DuckDBAPI` and it will automatically run `INSTALL spatial; LOAD spatial;` for you — no manual setup required.
 
 The geometry column must contain WKT strings. For `GeoOverlap` and `GeoJaccard`, bounding box columns are required in the data:
 
@@ -82,4 +94,4 @@ GeoOverlap("geometry_wkt").configure(
 
 **Dialect support:** All SQL targets DuckDB spatial functions. Other backends (Spark, Postgres/PostGIS) are not yet supported.
 
-**CRS:** No coordinate reference system handling is implemented. Ensure geometries are in a consistent CRS before use.
+**CRS:** Geographic and projected CRSes are recognised by EPSG code for `GeoDistance` (see `src/geosplink/crs.py` for the full list, e.g. `EPSG:4326`, `EPSG:28992`, UTM zones, etc.). Recognised geographic CRSes are reprojected to Web Mercator before computing distance; recognised projected CRSes are used directly. Unrecognised or omitted CRSes fall back to Euclidean distance in the geometries' native coordinate units, with a `UserWarning`. `GeoOverlap`, `GeoJaccard`, and `GeoSizeRatio` do not use CRS and assume geometries are already in a consistent CRS.
