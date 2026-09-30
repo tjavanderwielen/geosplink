@@ -216,7 +216,8 @@ class GeoAnyOverlapLevel(ComparisonLevelCreator):
 
 class GeoOverlapLevel(ComparisonLevelCreator):
     """
-    Comparison level for overlap coefficient (intersection / min area) at a threshold.
+    Comparison level for overlap coefficient (intersection area / min(area_l, area_r))
+    at a threshold.
     Uses a bounding box pre-filter for performance.
 
     Args:
@@ -253,7 +254,8 @@ class GeoOverlapLevel(ComparisonLevelCreator):
 
 class GeoJaccardLevel(ComparisonLevelCreator):
     """
-    Comparison level for Jaccard similarity (intersection / union area) at a threshold.
+    Comparison level for Jaccard similarity (intersection area / union area) at a
+    threshold.
     Uses a bounding box pre-filter for performance.
 
     Args:

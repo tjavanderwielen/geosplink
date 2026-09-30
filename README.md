@@ -16,10 +16,10 @@ Mirrors Splink's own library structure:
 ## Comparators
 
 ### `GeoOverlap(col_name, thresholds=[0.9, 0.5])`
-Overlap coefficient: `intersection / min(area_l, area_r)`. Asymmetric — a small geometry fully inside a large one scores 100%. Useful when one dataset has coarser geometries than the other.
+Overlap coefficient: `intersection area / min(area_l, area_r)`. Asymmetric — a small geometry fully inside a large one scores 100%. Useful when one dataset has coarser geometries than the other.
 
 ### `GeoJaccard(col_name, thresholds=[0.9, 0.5])`
-Jaccard similarity (IoU): `intersection / union`. Symmetric. Preferred when both datasets have comparable geometry precision.
+Jaccard similarity (IoU): `intersection area / union area`. Symmetric. Preferred when both datasets have comparable geometry precision.
 
 ### `GeoSizeRatio(col_name, thresholds=[0.5, 0.25])`
 Size ratio: `min(area_l, area_r) / max(area_l, area_r)`. Useful as an independent signal when geometries may not overlap but should be similar in scale.
