@@ -20,6 +20,7 @@ from splink.internals.misc import ensure_is_iterable
 from geosplink.crs import resolve_crs
 import geosplink.geo_comparison_level_library as gcll
 from geosplink.geo_comparison_level_library import (
+    _check_bbox_prefix,
     _check_col_name,
     _check_ratio_threshold,
     _check_distance_threshold,
@@ -34,6 +35,7 @@ class GeoOverlap(ComparisonCreator):
         self,
         col_name: str,
         overlap_threshold_or_thresholds: Union[float, List[float]] = [0.9, 0.5],
+        bbox_prefix: Optional[str] = None,
     ):
         """
         Represents a comparison based on the geometric overlap of two geometries
@@ -45,8 +47,12 @@ class GeoOverlap(ComparisonCreator):
             overlap_threshold_or_thresholds (Union[float, List[float]]):
                 A single threshold or list of thresholds for area overlap levels.
                 Defaults to [0.9, 0.5] for >=90% and >=50% overlap levels.
+            bbox_prefix (str, optional): Prefix of pre-computed bounding box columns
+                ({prefix}_minx, _miny, _maxx, _maxy). If None, the bounding boxes are
+                computed inline from the geometry column.
         """
         _check_col_name(col_name, "GeoOverlap")
+        self.bbox_prefix = _check_bbox_prefix(bbox_prefix, "GeoOverlap")
         thresholds_as_iterable = ensure_is_iterable(overlap_threshold_or_thresholds)
         self.thresholds = [
             _check_ratio_threshold(t, "GeoOverlap") for t in thresholds_as_iterable
@@ -60,9 +66,12 @@ class GeoOverlap(ComparisonCreator):
     def create_comparison_levels(self) -> List[ComparisonLevelCreator]:
         return [
             gcll.GeoNullLevel(self._col_name),
-            gcll.GeoExactOverlapLevel(self._col_name),
-            *[gcll.GeoOverlapLevel(self._col_name, t) for t in self.thresholds],
-            gcll.GeoAnyOverlapLevel(self._col_name),
+            gcll.GeoExactOverlapLevel(self._col_name, self.bbox_prefix),
+            *[
+                gcll.GeoOverlapLevel(self._col_name, t, self.bbox_prefix)
+                for t in self.thresholds
+            ],
+            gcll.GeoAnyOverlapLevel(self._col_name, self.bbox_prefix),
             CustomLevel("ELSE", label_for_charts="No overlap"),
         ]
 
@@ -84,6 +93,7 @@ class GeoJaccard(ComparisonCreator):
         self,
         col_name: str,
         score_threshold_or_thresholds: Union[float, List[float]] = [0.9, 0.5],
+        bbox_prefix: Optional[str] = None,
     ):
         """
         Represents a comparison based on the Jaccard similarity (IoU) of two geometries
@@ -95,8 +105,12 @@ class GeoJaccard(ComparisonCreator):
             score_threshold_or_thresholds (Union[float, List[float]]):
                 A single threshold or list of thresholds for Jaccard similarity levels.
                 Defaults to [0.9, 0.5] for >=90% and >=50% similarity levels.
+            bbox_prefix (str, optional): Prefix of pre-computed bounding box columns
+                ({prefix}_minx, _miny, _maxx, _maxy). If None, the bounding boxes are
+                computed inline from the geometry column.
         """
         _check_col_name(col_name, "GeoJaccard")
+        self.bbox_prefix = _check_bbox_prefix(bbox_prefix, "GeoJaccard")
         thresholds_as_iterable = ensure_is_iterable(score_threshold_or_thresholds)
         self.thresholds = [
             _check_ratio_threshold(t, "GeoJaccard") for t in thresholds_as_iterable
@@ -110,9 +124,12 @@ class GeoJaccard(ComparisonCreator):
     def create_comparison_levels(self) -> List[ComparisonLevelCreator]:
         return [
             gcll.GeoNullLevel(self._col_name),
-            gcll.GeoExactOverlapLevel(self._col_name),
-            *[gcll.GeoJaccardLevel(self._col_name, t) for t in self.thresholds],
-            gcll.GeoAnyOverlapLevel(self._col_name),
+            gcll.GeoExactOverlapLevel(self._col_name, self.bbox_prefix),
+            *[
+                gcll.GeoJaccardLevel(self._col_name, t, self.bbox_prefix)
+                for t in self.thresholds
+            ],
+            gcll.GeoAnyOverlapLevel(self._col_name, self.bbox_prefix),
             CustomLevel("ELSE", label_for_charts="No overlap"),
         ]
 

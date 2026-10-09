@@ -15,10 +15,10 @@ Mirrors Splink's own library structure:
 
 ## Comparators
 
-### `GeoOverlap(col_name, thresholds=[0.9, 0.5])`
+### `GeoOverlap(col_name, thresholds=[0.9, 0.5], bbox_prefix=None)`
 Overlap coefficient: `intersection / min(area_l, area_r)`. Asymmetric — a small geometry fully inside a large one scores 100%. Useful when one dataset has coarser geometries than the other.
 
-### `GeoJaccard(col_name, thresholds=[0.9, 0.5])`
+### `GeoJaccard(col_name, thresholds=[0.9, 0.5], bbox_prefix=None)`
 Jaccard similarity (IoU): `intersection / union`. Symmetric. Preferred when both datasets have comparable geometry precision.
 
 ### `GeoSizeRatio(col_name, thresholds=[0.5, 0.25])`
@@ -70,16 +70,23 @@ comparison = CustomComparison(
 - [Splink](https://github.com/moj-analytical-services/splink)
 - DuckDB with the [spatial extension](https://duckdb.org/docs/extensions/spatial.html). Use `geosplink.DuckDBAPI` in place of Splink's `DuckDBAPI` and it will automatically run `INSTALL spatial; LOAD spatial;` for you — no manual setup required.
 
-The geometry column must contain WKT strings. For `GeoOverlap` and `GeoJaccard`, bounding box columns are required in the data:
+The geometry column must contain WKT strings.
+
+`GeoOverlap` and `GeoJaccard` run a cheap bounding box test before the expensive intersection, which discards most non-matching pairs early. By default the bounding boxes are computed inline from the WKT. If your data already has bounding box columns, pass `bbox_prefix` to use them instead, which is faster as the WKT does not have to be parsed again for every pair:
 
 | Column | Description |
 |--------|-------------|
-| `bbox_minx` | Minimum x (longitude) of bounding box |
-| `bbox_miny` | Minimum y (latitude) of bounding box |
-| `bbox_maxx` | Maximum x (longitude) of bounding box |
-| `bbox_maxy` | Maximum y (latitude) of bounding box |
+| `{bbox_prefix}_minx` | Minimum x (longitude) of bounding box |
+| `{bbox_prefix}_miny` | Minimum y (latitude) of bounding box |
+| `{bbox_prefix}_maxx` | Maximum x (longitude) of bounding box |
+| `{bbox_prefix}_maxy` | Maximum y (latitude) of bounding box |
 
-Splink expects `_l` / `_r` suffixed versions of these in the comparison table.
+```python
+# e.g. in DuckDB: ST_XMin(ST_GeomFromText(geometry_wkt)) AS bbox_minx, ...
+GeoOverlap("geometry_wkt", bbox_prefix="bbox")
+```
+
+Splink expects `_l` / `_r` suffixed versions of these in the comparison table. Rows with a NULL bounding box value never pass the pre-filter, so they fall through to the "no overlap" level.
 
 ## Notes
 

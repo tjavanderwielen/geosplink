@@ -25,7 +25,7 @@ _ADJACENT_SQUARE = load_wkt(
 _ADJACENT_BBOX = load_bbox("adjacent_square")
 
 
-def _eval(con, level, wkt_l, bbox_l, wkt_r, bbox_r):
+def _eval(con, level, wkt_l, bbox_l, wkt_r, bbox_r, prefix="bbox"):
     """Evaluate a level's SQL against two WKT geometries, returning the boolean result."""
     sql = level.create_sql(None)
     minx_l, miny_l, maxx_l, maxy_l = bbox_l
@@ -35,10 +35,10 @@ def _eval(con, level, wkt_l, bbox_l, wkt_r, bbox_r):
         FROM (
             SELECT
                 '{wkt_l}' AS geometry_l, '{wkt_r}' AS geometry_r,
-                {minx_l} AS bbox_minx_l, {miny_l} AS bbox_miny_l,
-                {maxx_l} AS bbox_maxx_l, {maxy_l} AS bbox_maxy_l,
-                {minx_r} AS bbox_minx_r, {miny_r} AS bbox_miny_r,
-                {maxx_r} AS bbox_maxx_r, {maxy_r} AS bbox_maxy_r
+                {minx_l} AS {prefix}_minx_l, {miny_l} AS {prefix}_miny_l,
+                {maxx_l} AS {prefix}_maxx_l, {maxy_l} AS {prefix}_maxy_l,
+                {minx_r} AS {prefix}_minx_r, {miny_r} AS {prefix}_miny_r,
+                {maxx_r} AS {prefix}_maxx_r, {maxy_r} AS {prefix}_maxy_r
         )
     """
     return con.execute(query).fetchone()[0]
@@ -264,8 +264,13 @@ class TestGeoExactOverlapLevel:
         sql = gcll.GeoExactOverlapLevel("geometry").create_sql(None)
         assert "ST_Equals" in sql
 
-    def test_sql_uses_bbox_prefilter(self):
+    def test_sql_uses_inline_bbox_prefilter_by_default(self):
         sql = gcll.GeoExactOverlapLevel("geometry").create_sql(None)
+        assert "ST_Intersects_Extent" in sql
+        assert "bbox_" not in sql
+
+    def test_sql_uses_precomputed_bbox_prefilter(self):
+        sql = gcll.GeoExactOverlapLevel("geometry", bbox_prefix="bbox").create_sql(None)
         assert "bbox_maxx_l" in sql
 
     def test_matches_identical_geometries(self, duckdb_spatial):
@@ -317,8 +322,13 @@ class TestGeoAnyOverlapLevel:
         sql = gcll.GeoAnyOverlapLevel("geometry").create_sql(None)
         assert "ST_Intersects" in sql
 
-    def test_sql_uses_bbox_prefilter(self):
+    def test_sql_uses_inline_bbox_prefilter_by_default(self):
         sql = gcll.GeoAnyOverlapLevel("geometry").create_sql(None)
+        assert "ST_Intersects_Extent" in sql
+        assert "bbox_" not in sql
+
+    def test_sql_uses_precomputed_bbox_prefilter(self):
+        sql = gcll.GeoAnyOverlapLevel("geometry", bbox_prefix="bbox").create_sql(None)
         assert "bbox_maxx_l" in sql
 
     def test_matches_partially_overlapping(self, duckdb_spatial):
@@ -707,6 +717,52 @@ class TestGeoSizeRatioLevel:
             )
             is False
         )
+
+
+# (wkt_l, bbox_l, wkt_r, bbox_r) pairs run through every level that has a bbox pre-filter
+_BBOX_CASES = {
+    "identical": (_UNIT_SQUARE, _UNIT_BBOX, _UNIT_SQUARE, _UNIT_BBOX),
+    "half_overlap": (_UNIT_SQUARE, _UNIT_BBOX, _RIGHT_HALF, _RIGHT_HALF_BBOX),
+    "disjoint": (_UNIT_SQUARE, _UNIT_BBOX, _FAR_SQUARE, _FAR_BBOX),
+    "touching": (_UNIT_SQUARE, _UNIT_BBOX, _ADJACENT_SQUARE, _ADJACENT_BBOX),
+    "contained": (_SMALL_SQUARE, _SMALL_BBOX, _UNIT_SQUARE, _UNIT_BBOX),
+}
+
+# level class, extra args, expected result per case in the order of _BBOX_CASES
+_BBOX_LEVELS = [
+    (gcll.GeoExactOverlapLevel, (), [True, False, False, False, False]),
+    (gcll.GeoAnyOverlapLevel, (), [True, True, False, True, True]),
+    (gcll.GeoOverlapLevel, (0.5,), [True, True, False, False, True]),
+    (gcll.GeoJaccardLevel, (0.5,), [True, False, False, False, False]),
+]
+
+
+@pytest.mark.parametrize(
+    "level_cls, args, expected", _BBOX_LEVELS, ids=lambda v: getattr(v, "__name__", None)
+)
+class TestBBoxPrefilter:
+    @pytest.mark.parametrize("bbox_prefix", [None, "bbox"], ids=["inline", "precomputed"])
+    @pytest.mark.parametrize("case", list(_BBOX_CASES))
+    def test_result(self, duckdb_spatial, level_cls, args, expected, bbox_prefix, case):
+        level = level_cls("geometry", *args, bbox_prefix=bbox_prefix)
+        wkt_l, bbox_l, wkt_r, bbox_r = _BBOX_CASES[case]
+        if bbox_prefix is None:
+            # inline mode needs nothing but the geometry columns
+            got = _eval_null(duckdb_spatial, level, wkt_l, wkt_r)
+        else:
+            got = _eval(duckdb_spatial, level, wkt_l, bbox_l, wkt_r, bbox_r)
+        assert got is expected[list(_BBOX_CASES).index(case)]
+
+    def test_custom_prefix(self, duckdb_spatial, level_cls, args, expected):
+        level = level_cls("geometry", *args, bbox_prefix="gb")
+        wkt_l, bbox_l, wkt_r, bbox_r = _BBOX_CASES["half_overlap"]
+        got = _eval(duckdb_spatial, level, wkt_l, bbox_l, wkt_r, bbox_r, prefix="gb")
+        assert got is expected[1]
+
+    @pytest.mark.parametrize("bad", ["", "  ", 5, ["bbox"]])
+    def test_invalid_bbox_prefix_raises(self, level_cls, args, expected, bad):
+        with pytest.raises(TypeError, match="bbox_prefix"):
+            level_cls("geometry", *args, bbox_prefix=bad)
 
 
 # Points for distance tests — no bbox needed (GeoDistance levels don't use bbox)

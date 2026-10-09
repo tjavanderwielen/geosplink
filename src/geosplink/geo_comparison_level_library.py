@@ -13,7 +13,7 @@ CRS sensitivity:
     are identical regardless of CRS.
 
 Note:
-    All SQL targets DuckDB spatial functions (ST_*, BBOX_OVERLAP, etc.).
+    All SQL targets DuckDB spatial functions (ST_*, etc.).
     Dialect translation is not yet implemented.
 """
 
@@ -69,6 +69,18 @@ def _check_use_centroid(use_centroid: bool, cls_name: str) -> None:
         )
 
 
+def _check_bbox_prefix(bbox_prefix: Optional[str], cls_name: str) -> Optional[str]:
+    """Validate bbox_prefix: None (compute inline) or a non-empty column prefix."""
+    if bbox_prefix is None:
+        return None
+    if not isinstance(bbox_prefix, str) or not bbox_prefix.strip():
+        raise TypeError(
+            f"{cls_name}: bbox_prefix must be None or a non-empty string, "
+            f"got {bbox_prefix!r}"
+        )
+    return bbox_prefix
+
+
 def _warn_thresholds_descending(thresholds: List[float], cls_name: str) -> None:
     """Warn if ratio thresholds are not in descending order."""
     for i in range(len(thresholds) - 1):
@@ -111,11 +123,18 @@ def _geom_expr(
     return expr
 
 
-# Helper: bounding box overlap check
-_BBOX_OVERLAP = (
-    "NOT (bbox_maxx_l < bbox_minx_r OR bbox_minx_l > bbox_maxx_r OR "
-    "bbox_maxy_l < bbox_miny_r OR bbox_miny_l > bbox_maxy_r)"
-)
+def _bbox_prefilter(col_name: str, bbox_prefix: Optional[str]) -> str:
+    """Build a bounding box overlap check, from pre-computed columns or inline."""
+    if bbox_prefix is None:
+        return (
+            f"ST_Intersects_Extent("
+            f"ST_GeomFromText({col_name}_l), ST_GeomFromText({col_name}_r))"
+        )
+    p = bbox_prefix
+    return (
+        f"NOT ({p}_maxx_l < {p}_minx_r OR {p}_minx_l > {p}_maxx_r OR "
+        f"{p}_maxy_l < {p}_miny_r OR {p}_miny_l > {p}_maxy_r)"
+    )
 
 
 class GeoNullLevel(ComparisonLevelCreator):
@@ -162,16 +181,20 @@ class GeoExactOverlapLevel(ComparisonLevelCreator):
 
     Args:
         col_name (str): Name of the WKT geometry column.
+        bbox_prefix (str, optional): Prefix of pre-computed bounding box columns
+            ({prefix}_minx, _miny, _maxx, _maxy). If None, the bounding boxes are
+            computed inline from the geometry column.
     """
 
-    def __init__(self, col_name: str):
+    def __init__(self, col_name: str, bbox_prefix: Optional[str] = None):
         _check_col_name(col_name, "GeoExactOverlapLevel")
         self._col_name = col_name
+        self.bbox_prefix = _check_bbox_prefix(bbox_prefix, "GeoExactOverlapLevel")
 
     def create_sql(self, sql_dialect: SplinkDialect) -> str:
         l, r = f"{self._col_name}_l", f"{self._col_name}_r"
         return f"""
-            {_BBOX_OVERLAP} AND
+            {_bbox_prefilter(self._col_name, self.bbox_prefix)} AND
             ST_Equals(
                 ST_GeomFromText({l}),
                 ST_GeomFromText({r})
@@ -185,19 +208,24 @@ class GeoExactOverlapLevel(ComparisonLevelCreator):
 class GeoAnyOverlapLevel(ComparisonLevelCreator):
     """
     Comparison level for any spatial intersection (ST_Intersects).
+    Uses a bounding box pre-filter for performance.
 
     Args:
         col_name (str): Name of the WKT geometry column.
+        bbox_prefix (str, optional): Prefix of pre-computed bounding box columns
+            ({prefix}_minx, _miny, _maxx, _maxy). If None, the bounding boxes are
+            computed inline from the geometry column.
     """
 
-    def __init__(self, col_name: str):
+    def __init__(self, col_name: str, bbox_prefix: Optional[str] = None):
         _check_col_name(col_name, "GeoAnyOverlapLevel")
         self._col_name = col_name
+        self.bbox_prefix = _check_bbox_prefix(bbox_prefix, "GeoAnyOverlapLevel")
 
     def create_sql(self, sql_dialect: SplinkDialect) -> str:
         l, r = f"{self._col_name}_l", f"{self._col_name}_r"
         return f"""
-            {_BBOX_OVERLAP} AND
+            {_bbox_prefilter(self._col_name, self.bbox_prefix)} AND
             ST_Intersects(
                 ST_GeomFromText({l}),
                 ST_GeomFromText({r})
@@ -211,21 +239,28 @@ class GeoAnyOverlapLevel(ComparisonLevelCreator):
 class GeoOverlapLevel(ComparisonLevelCreator):
     """
     Comparison level for overlap coefficient (intersection / min area) at a threshold.
+    Uses a bounding box pre-filter for performance.
 
     Args:
         col_name (str): Name of the WKT geometry column.
         threshold (float): Minimum overlap coefficient (0-1).
+        bbox_prefix (str, optional): Prefix of pre-computed bounding box columns
+            ({prefix}_minx, _miny, _maxx, _maxy). If None, the bounding boxes are
+            computed inline from the geometry column.
     """
 
-    def __init__(self, col_name: str, threshold: float):
+    def __init__(
+        self, col_name: str, threshold: float, bbox_prefix: Optional[str] = None
+    ):
         _check_col_name(col_name, "GeoOverlapLevel")
         self._col_name = col_name
         self.threshold = _check_ratio_threshold(threshold, "GeoOverlapLevel")
+        self.bbox_prefix = _check_bbox_prefix(bbox_prefix, "GeoOverlapLevel")
 
     def create_sql(self, sql_dialect: SplinkDialect) -> str:
         l, r = f"{self._col_name}_l", f"{self._col_name}_r"
         return f"""
-            {_BBOX_OVERLAP} AND
+            {_bbox_prefilter(self._col_name, self.bbox_prefix)} AND
             ST_Area(
                 ST_Intersection(
                     ST_GeomFromText({l}),
@@ -252,17 +287,23 @@ class GeoJaccardLevel(ComparisonLevelCreator):
     Args:
         col_name (str): Name of the WKT geometry column.
         threshold (float): Minimum Jaccard similarity (0-1).
+        bbox_prefix (str, optional): Prefix of pre-computed bounding box columns
+            ({prefix}_minx, _miny, _maxx, _maxy). If None, the bounding boxes are
+            computed inline from the geometry column.
     """
 
-    def __init__(self, col_name: str, threshold: float):
+    def __init__(
+        self, col_name: str, threshold: float, bbox_prefix: Optional[str] = None
+    ):
         _check_col_name(col_name, "GeoJaccardLevel")
         self._col_name = col_name
         self.threshold = _check_ratio_threshold(threshold, "GeoJaccardLevel")
+        self.bbox_prefix = _check_bbox_prefix(bbox_prefix, "GeoJaccardLevel")
 
     def create_sql(self, sql_dialect: SplinkDialect) -> str:
         l, r = f"{self._col_name}_l", f"{self._col_name}_r"
         return f"""
-            {_BBOX_OVERLAP} AND
+            {_bbox_prefilter(self._col_name, self.bbox_prefix)} AND
             ST_Area(
                 ST_Intersection(
                     ST_GeomFromText({l}),

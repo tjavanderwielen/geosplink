@@ -96,6 +96,25 @@ class TestGeoJaccard:
         assert levels[-1].create_label_for_charts() == "No overlap"
 
 
+@pytest.mark.parametrize("cls", [gcl.GeoOverlap, gcl.GeoJaccard])
+class TestBBoxPrefix:
+    def test_defaults_to_inline(self, cls):
+        assert cls("geometry").bbox_prefix is None
+        levels = cls("geometry").create_comparison_levels()
+        assert all(level.bbox_prefix is None for level in levels[1:-1])
+
+    def test_passed_to_all_bbox_levels(self, cls):
+        levels = cls("geometry", bbox_prefix="bbox").create_comparison_levels()
+        # exact + thresholds + any overlap sit between the null and else levels
+        assert len(levels[1:-1]) == 4
+        assert all(level.bbox_prefix == "bbox" for level in levels[1:-1])
+
+    @pytest.mark.parametrize("bad", ["", 5])
+    def test_invalid_bbox_prefix_raises(self, cls, bad):
+        with pytest.raises(TypeError, match="bbox_prefix"):
+            cls("geometry", bbox_prefix=bad)
+
+
 class TestGeoSizeRatio:
     def test_default_thresholds(self):
         assert gcl.GeoSizeRatio("geometry").thresholds == [0.5, 0.25]
