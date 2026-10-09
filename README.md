@@ -1,5 +1,7 @@
 # GeoSplink
 
+[![Tests](https://github.com/tjavanderwielen/geosplink/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/tjavanderwielen/geosplink/actions/workflows/tests.yml)
+
 Geospatial comparator classes to supplement [Splink](https://github.com/moj-analytical-services/splink) record linkage.
 
 Provides SQL-based comparison levels for matching records based on geometric properties, designed to slot directly into Splink's `SettingsCreator` alongside standard comparators.
