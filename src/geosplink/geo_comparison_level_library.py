@@ -123,11 +123,6 @@ class GeoNullLevel(ComparisonLevelCreator):
     Comparison level for missing geometry data.
     Matches any pair where either or both geometry columns are NULL.
 
-    Non-NULL empty geometries (``ST_IsEmpty``) and geometrically invalid geometries
-    (``ST_IsValid`` is FALSE, e.g. self-intersecting polygons) raise a hard error
-    at query time rather than producing silently incorrect spatial metrics.
-    NULL takes precedence: a NULL + invalid pair still routes to this level.
-
     Args:
         col_name (str): Name of the WKT geometry column.
     """
@@ -190,7 +185,6 @@ class GeoExactOverlapLevel(ComparisonLevelCreator):
 class GeoAnyOverlapLevel(ComparisonLevelCreator):
     """
     Comparison level for any spatial intersection (ST_Intersects).
-    Uses a bounding box pre-filter for performance.
 
     Args:
         col_name (str): Name of the WKT geometry column.
@@ -217,7 +211,6 @@ class GeoAnyOverlapLevel(ComparisonLevelCreator):
 class GeoOverlapLevel(ComparisonLevelCreator):
     """
     Comparison level for overlap coefficient (intersection / min area) at a threshold.
-    Uses a bounding box pre-filter for performance.
 
     Args:
         col_name (str): Name of the WKT geometry column.
@@ -294,10 +287,6 @@ class GeoSizeExactLevel(ComparisonLevelCreator):
     """
     Comparison level for geometries with equal area.
 
-    Note:
-        Floating point equality on ST_Area will almost never match in practice.
-        Consider using a tolerance-based approach if needed.
-
     Args:
         col_name (str): Name of the WKT geometry column.
     """
@@ -351,11 +340,9 @@ class GeoDistanceExactLevel(ComparisonLevelCreator):
     """
     Comparison level for geometries at exactly the same location (distance = 0).
 
-    CRS does not affect this level — distance = 0 is identical in any coordinate system.
-
     Args:
         col_name (str): Name of the WKT geometry column.
-        use_centroid (bool): If True, compare centroids instead of full geometries.
+        use_centroid (bool): If True, compare centroids instead edge-to-edge.
     """
 
     def __init__(self, col_name: str, use_centroid: bool = False):
@@ -384,19 +371,11 @@ class GeoDistanceLevel(ComparisonLevelCreator):
     """
     Comparison level for distance between geometries at a threshold.
 
-    For projected CRS (e.g. EPSG:28992), uses ``ST_Distance`` directly — threshold
-    is in metres. For geographic CRS (e.g. EPSG:4326), reprojects to Web Mercator
-    (EPSG:3857) via ``ST_Transform`` before computing distance — threshold is in
-    metres (approximate; accuracy degrades above ~60° latitude).
-
     Args:
         col_name (str): Name of the WKT geometry column.
-        threshold (float): Maximum distance. In metres when CRS is known; in native
-            CRS units when ``crs=None``.
-        use_centroid (bool): If True, compare centroids instead of full geometries.
-        crs: EPSG code of the geometry column's CRS (e.g. ``'EPSG:28992'`` or ``4326``).
-            Both datasets must share the same CRS — ensure this in your data preparation.
-            Emits ``UserWarning`` when omitted or unrecognised.
+        threshold (float): Maximum distance.
+        use_centroid (bool): If True, compare centroids instead edge-to-edge.
+        crs: EPSG code of the geometry column's CRS. Both datasets must share the same CRS.
     """
 
     def __init__(
