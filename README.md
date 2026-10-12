@@ -18,7 +18,7 @@ Mirrors Splink's own library structure:
 ## Comparators
 
 ### `GeoOverlap(col_name, thresholds=[0.9, 0.5], bbox_prefix=None)`
-Overlap coefficient: `intersection / min(area_l, area_r)`. Asymmetric — a small geometry fully inside a large one scores 100%. Useful when one dataset has coarser geometries than the other.
+Overlap coefficient: `intersection / min(area_l, area_r)`. A small geometry fully inside a large one scores 100%, so this is useful when one dataset has coarser geometries than the other.
 
 ### `GeoJaccard(col_name, thresholds=[0.9, 0.5], bbox_prefix=None)`
 Jaccard similarity (IoU): `intersection / union`. Symmetric. Preferred when both datasets have comparable geometry precision.
@@ -34,6 +34,32 @@ Distance between two geometries (or their centroids, if `use_centroid=True`), co
 - **Unrecognised or omitted CRS** (`crs=None` or an EPSG code not in geosplink's known list): falls back to Euclidean distance in the geometries' native coordinate units, and emits a `UserWarning`.
 
 See `src/geosplink/crs.py` for the full list of recognised geographic and projected EPSG codes.
+
+### Choosing a comparator
+
+```mermaid
+flowchart TD
+    pair["Compare geometries A and B"] --> choice{"What should count as similar?"}
+    choice -->|"Shared area; containment can count fully"| overlap["GeoOverlap<br/>intersection / smaller area"]
+    choice -->|"Shared area relative to their combined footprint"| jaccard["GeoJaccard<br/>intersection / union"]
+    choice -->|"Similar area, regardless of location"| size["GeoSizeRatio<br/>smaller area / larger area"]
+    choice -->|"Close locations or boundaries"| distance["GeoDistance<br/>edge-to-edge or centroid"]
+```
+
+Overlap and Jaccard both require intersecting geometries; Jaccard penalises area outside the intersection more strongly. Size ratio ignores location, while distance measures proximity rather than shared area.
+
+### Does swapping A and B change the result?
+
+`score(A, B) == score(B, A)` for all four comparators. In particular, GeoOverlap is symmetric in its inputs: its smaller-area denominator means full containment scores 100% in either order. That containment behaviour is sometimes mistaken for directional scoring.
+
+```mermaid
+flowchart LR
+    ab["A compared with B"] --> metrics["GeoOverlap · GeoJaccard<br/>GeoSizeRatio · GeoDistance"]
+    ba["B compared with A"] --> metrics
+    metrics --> same["Same score and comparison level"]
+```
+
+This follows from the formulas: intersection and union are unchanged by swapping the geometries; `min` and `max` are order-independent; and distance is the same in either direction. Exact-overlap and exact-distance levels are also unchanged.
 
 
 ## Usage
