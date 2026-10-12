@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 284" width="500" height="284" role="img" aria-labelledby="t d">
+<title id="t">GeoSizeRatio diagram</title>
+<desc id="d">The size ratio is the smaller area divided by the larger area, regardless of position. A shape a quarter the size of the other scores 25%; two same-sized shapes far apart score 100%.</desc>
+<style>
+:root{--bg:#f6f8fa;--border:#d0d7de;--text:#1f2328;--a:#0969da;--b:#bc4c00;--hl:#8250df}
+@media (prefers-color-scheme:dark){:root{--bg:#161b22;--border:#30363d;--text:#e6edf3;--a:#58a6ff;--b:#f0883e;--hl:#a371f7}}
+text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;fill:var(--text)}
+.res{font-size:30px;font-weight:700}
+.card{fill:var(--bg);stroke:var(--border)}
+.sep{stroke:var(--border);stroke-width:1}
+.a{fill:var(--a);fill-opacity:.2;stroke:var(--a);stroke-width:2}
+.b{fill:var(--b);fill-opacity:.2;stroke:var(--b);stroke-width:2}
+.oa{fill:none;stroke:var(--a);stroke-width:1.5}
+.ob{fill:none;stroke:var(--b);stroke-width:1.5}
+.hl{fill:var(--hl)}
+.bar{stroke:var(--text);stroke-width:2}
+.dist{stroke:var(--text);stroke-width:2;fill:none}
+.dash{stroke:var(--text);stroke-width:2;stroke-dasharray:5 4;fill:none}
+.da{fill:var(--a)}
+.db{fill:var(--b)}
+</style>
+<rect class="card" x=".5" y=".5" width="499" height="283" rx="12"/>
+<rect class="b" x="63.5" y="55.5" width="65" height="39"/>
+<rect class="a" x="148" y="75" width="32.5" height="19.5"/>
+<g class="hl" opacity=".6"><rect class="" x="276.25" y="34.75" width="27.5" height="16.5"/></g><rect class="oa" x="276.25" y="34.75" width="27.5" height="16.5"/>
+<line class="bar" x1="242" x2="338" y1="79" y2="79"/>
+<g class="hl" opacity=".6"><rect class="" x="262.5" y="98.5" width="55" height="33"/></g><rect class="ob" x="262.5" y="98.5" width="55" height="33"/>
+<text class="res" x="362" y="90">= 25%</text>
+<line class="sep" x1="24" x2="476" y1="142" y2="142"/>
+<rect class="a" x="24.5" y="189.5" width="65" height="39"/>
+<rect class="b" x="154.5" y="189.5" width="65" height="39"/>
+<g class="hl" opacity=".6"><rect class="" x="262.5" y="160.5" width="55" height="33"/></g><rect class="oa" x="262.5" y="160.5" width="55" height="33"/>
+<line class="bar" x1="242" x2="338" y1="213" y2="213"/>
+<g class="hl" opacity=".6"><rect class="" x="262.5" y="232.5" width="55" height="33"/></g><rect class="ob" x="262.5" y="232.5" width="55" height="33"/>
+<text class="res" x="362" y="224">= 100%</text>
+</svg>

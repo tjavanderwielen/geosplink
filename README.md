@@ -18,22 +18,24 @@ Mirrors Splink's own library structure:
 ## Comparators
 
 ### `GeoOverlap(col_name, thresholds=[0.9, 0.5], bbox_prefix=None)`
-Overlap coefficient: `intersection / min(area_l, area_r)`. Asymmetric — a small geometry fully inside a large one scores 100%. Useful when one dataset has coarser geometries than the other.
+Overlap coefficient: `intersection / min(area_l, area_r)`. 
+
+![GeoOverlap: the intersection divided by the smaller shape's area. A inside B scores 100%; two equally sized shapes that partly overlap score 67%.](docs/img/geo_overlap.svg)
 
 ### `GeoJaccard(col_name, thresholds=[0.9, 0.5], bbox_prefix=None)`
-Jaccard similarity (IoU): `intersection / union`. Symmetric. Preferred when both datasets have comparable geometry precision.
+Jaccard similarity (IoU): `intersection / union`. 
+
+![GeoJaccard: the intersection divided by the union of both shapes. A inside B scores 25%; two equally sized shapes that partly overlap score 50%.](docs/img/geo_jaccard.svg)
 
 ### `GeoSizeRatio(col_name, thresholds=[0.5, 0.25])`
-Size ratio: `min(area_l, area_r) / max(area_l, area_r)`. Useful as an independent signal when geometries may not overlap but should be similar in scale.
+Size ratio: `min(area_l, area_r) / max(area_l, area_r)`.
+
+![GeoSizeRatio: the smaller area divided by the larger area. A shape a quarter the size of the other scores 25%; two same-sized shapes score 100% even when far apart.](docs/img/geo_size_ratio.svg)
 
 ### `GeoDistance(col_name, distance_threshold_or_thresholds, distance_type="euclidean", use_centroid=False, crs=None)`
-Distance between two geometries (or their centroids, if `use_centroid=True`), compared against one or more thresholds. The `crs` parameter controls how thresholds are interpreted:
+Distance between two geometries (or their centroids, if `use_centroid=True`).
 
-- **Projected CRS** (e.g. `crs='EPSG:28992'`): distance is computed directly; thresholds are in metres.
-- **Geographic CRS** (e.g. `crs='EPSG:4326'`): geometries are reprojected to Web Mercator (EPSG:3857) before computing distance; thresholds are in metres (approximate — accuracy degrades above ~60° latitude).
-- **Unrecognised or omitted CRS** (`crs=None` or an EPSG code not in geosplink's known list): falls back to Euclidean distance in the geometries' native coordinate units, and emits a `UserWarning`.
-
-See `src/geosplink/crs.py` for the full list of recognised geographic and projected EPSG codes.
+![GeoDistance: by default the distance is the gap between the closest points of the two shapes. With use_centroid=True it is the distance between their centroids.](docs/img/geo_distance.svg)
 
 
 ## Usage
