@@ -738,10 +738,14 @@ _BBOX_LEVELS = [
 
 
 @pytest.mark.parametrize(
-    "level_cls, args, expected", _BBOX_LEVELS, ids=lambda v: getattr(v, "__name__", None)
+    "level_cls, args, expected",
+    _BBOX_LEVELS,
+    ids=lambda v: getattr(v, "__name__", None),
 )
 class TestBBoxPrefilter:
-    @pytest.mark.parametrize("bbox_prefix", [None, "bbox"], ids=["inline", "precomputed"])
+    @pytest.mark.parametrize(
+        "bbox_prefix", [None, "bbox"], ids=["inline", "precomputed"]
+    )
     @pytest.mark.parametrize("case", list(_BBOX_CASES))
     def test_result(self, duckdb_spatial, level_cls, args, expected, bbox_prefix, case):
         level = level_cls("geometry", *args, bbox_prefix=bbox_prefix)

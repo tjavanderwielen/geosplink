@@ -6,7 +6,12 @@ Usage:
     from GeoSplink import gcll  # for individual level classes
 """
 
-from geosplink.geo_comparison_library import GeoJaccard, GeoOverlap, GeoSizeRatio, GeoDistance
+from geosplink.geo_comparison_library import (
+    GeoJaccard,
+    GeoOverlap,
+    GeoSizeRatio,
+    GeoDistance,
+)
 import geosplink.geo_comparison_level_library as gcll
 from splink import DuckDBAPI as _DuckDBAPI
 
