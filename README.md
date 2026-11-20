@@ -41,7 +41,8 @@ Distance between two geometries (or their centroids, if `use_centroid=True`).
 ## Usage
 
 ```python
-from geosplink import GeoOverlap, GeoJaccard, GeoSizeRatio, GeoDistance, DuckDBAPI
+from splink import SettingsCreator
+from geosplink import GeoOverlap, GeoJaccard, GeoSizeRatio, GeoDistance, DuckDBAPI, Linker
 
 settings = SettingsCreator(
     link_type="dedupe_only",
@@ -52,7 +53,11 @@ settings = SettingsCreator(
 )
 
 db_api = DuckDBAPI()  # installs and loads the DuckDB spatial extension automatically
+linker = Linker(input_data, settings, db_api)
 ```
+
+`geosplink.Linker` extends Splink's `Linker` with input validation; its normal
+linkage and settings validation functionality remains available.
 
 Individual levels can also be composed into a `CustomComparison`:
 
@@ -90,7 +95,18 @@ The geometry column must contain WKT strings.
 GeoOverlap("geometry_wkt", bbox_prefix="bbox")
 ```
 
-Splink expects `_l` / `_r` suffixed versions of these in the comparison table. Rows with a NULL bounding box value never pass the pre-filter, so they fall through to the "no overlap" level.
+Each input table must contain all four numeric columns. With `geosplink.Linker`,
+non-NULL geometries must be valid, non-empty WKT and their precomputed bounds must
+be non-NULL and finite. NULL geometries may have NULL bounds. The check scans the
+input data at linker construction; it does **not** check whether supplied bounds
+actually match their geometries. Incorrect bounds can cause missed matches.
+
+The wrapper detects GeoSplink comparison and level objects in a `SettingsCreator`,
+including levels in `CustomComparison`. Serialized settings dictionaries and model
+files contain SQL rather than those objects, so the wrapper cannot identify and
+validate their GeoSplink-specific inputs. Splink's own `Linker` can still be used,
+but does not perform these GeoSplink checks. Splink adds `_l` / `_r` suffixes to
+the columns in the comparison table.
 
 ## Notes
 

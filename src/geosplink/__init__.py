@@ -13,6 +13,7 @@ from geosplink.geo_comparison_library import (
     GeoDistance,
 )
 import geosplink.geo_comparison_level_library as gcll
+from geosplink.linker import Linker
 from splink import DuckDBAPI as _DuckDBAPI
 
 
@@ -31,4 +32,5 @@ __all__ = [
     "GeoDistance",
     "gcll",
     "DuckDBAPI",
+    "Linker",
 ]
